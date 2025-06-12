@@ -12,7 +12,7 @@
 // See https://developer.chrome.com/extensions/content_scripts
 
 /**
- * 현재 페이지에서 보고 있는 트위터 유저가 스페이스 중인지 확인
+ * 현재 페이지에서 보고 있는 트위터 유저가 스페이스 중인지 확인하는 함수
  * @returns {boolean}
  */
 function isUserInSpace() {
@@ -44,11 +44,15 @@ function isUserInSpace() {
   return joinSpaceButton || !!spaceBadge || listeningBadge;
 }
 
-// 사용 예시
-console.log('이 유저가 스페이스 중인가?', isUserInSpace());
+// 현재 사이트가 트위터 또는 X인지 확인
+if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
+  console.log('이 유저가 스페이스 중인가?', isUserInSpace());
 
-const buttons = document.querySelectorAll('button');
-console.log(
-  `이 페이지에는 ${buttons.length}개의 button 요소가 있습니다.`,
-  buttons
-);
+  const buttons = document.querySelectorAll('button');
+  console.log(
+    `이 페이지에는 ${buttons.length}개의 button 요소가 있습니다.`,
+    buttons
+  );
+} else {
+  console.log('현재 사이트는 트위터 또는 X가 아닙니다.');
+}
