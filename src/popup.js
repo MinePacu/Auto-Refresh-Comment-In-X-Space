@@ -10,7 +10,7 @@ import './popup.css';
   // To get storage access, we have to mention it in `permissions` property of manifest.json file
   // More information on Permissions can we found at
   // https://developer.chrome.com/extensions/declare_permissions
-  const counterStorage = {
+  /*const counterStorage = {
     get: cb => {
       chrome.storage.sync.get(['count'], result => {
         cb(result.count);
@@ -94,8 +94,68 @@ import './popup.css';
       }
     });
   }
+  */
+  // 새로고침 주기 저장 및 복원
+  function setupRefreshInterval() {
+    const input = document.getElementById('refreshInterval');
+    // 저장된 값 불러오기
+    chrome.storage.sync.get(['refreshInterval'], result => {
+      if (typeof result.refreshInterval === 'number') {
+        input.value = result.refreshInterval;
+      }
+    });
+    // 값 변경 시 저장
+    input.addEventListener('change', () => {
+      let value = parseInt(input.value, 10);
+      if (isNaN(value) || value < 1) value = 1;
+      if (value > 3600) value = 3600;
+      input.value = value;
+      chrome.storage.sync.set({ refreshInterval: value });
+    });
+  }
 
-  document.addEventListener('DOMContentLoaded', restoreCounter);
+  // 현재 탭의 URL 표시
+  function showCurrentUrl() {
+    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+      const tab = tabs[0];
+      document.getElementById('currentUrl').textContent = tab?.url || '-';
+    });
+  }
+
+  // 마스터 ON/OFF 버튼 상태 저장 및 UI 처리
+  function setupMasterToggle() {
+    const btn = document.getElementById('masterToggleBtn');
+    // 저장된 상태 불러오기
+    chrome.storage.sync.get(['masterOn'], result => {
+      const isOn = result.masterOn !== false; // 기본값 true
+      updateMasterBtn(isOn);
+    });
+
+    btn.addEventListener('click', () => {
+      const isOn = btn.classList.toggle('off') ? false : true;
+      updateMasterBtn(isOn);
+      chrome.storage.sync.set({ masterOn: isOn }, () => {
+        // contentScript에 마스터 상태 전달
+        chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+          if (tabs[0]?.id) {
+            chrome.tabs.sendMessage(tabs[0].id, { type: 'MASTER_TOGGLE', isOn });
+          }
+        });
+      });
+    });
+
+    function updateMasterBtn(isOn) {
+      btn.textContent = isOn ? 'ON' : 'OFF';
+      btn.classList.toggle('off', !isOn);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    restoreCounter();
+    setupMasterToggle();
+    setupRefreshInterval();
+    showCurrentUrl();
+  });
 
   // Communicate with background file by sending a message
   chrome.runtime.sendMessage(

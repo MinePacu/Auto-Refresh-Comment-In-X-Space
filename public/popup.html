@@ -7,26 +7,30 @@
 </head>
 <body>
   <div class="app">
-    <p class="counter-label">마스터 버튼</p>
-    <div id="counter" class="counter"></div>
-    <div class="button-container">
-      <button id="decrementBtn" class="button">-</button>
-      <button id="incrementBtn" class="button">+</button>
+    <!-- 마스터 버튼 컨테이너 -->
+    <div class="master-container">
+      <p class="counter-label">마스터 버튼</p>
+      <button id="masterToggleBtn" class="button">ON</button>
     </div>
 
     <hr class="divider" />
+
+    <!-- 기능 컨테이너 -->
+    <div class="feature-container">
+      <div class="refresh-interval-setting" style="margin-bottom: 10px;">
+        <label for="refreshInterval">새로고침 주기(초):</label>
+        <input type="number" id="refreshInterval" min="1" max="3600" value="60" style="width:60px;" />
+      </div>
+      <div class="current-url">
+        <label>현재 주소:</label>
+        <span id="currentUrl">-</span>
+      </div>
+    </div>
 
     <p class="title">Chrome Extension is Ready!</p>
     <p class="subtitle">Start by updating <code>popup.html</code></p>
   </div>
 
   <script src="popup.js"></script>
-
-  <!--
-    This HTML file opens when you click on icon from the toolbar.
-
-    To begin the development, run `npm run watch`.
-    To create a production bundle, use `npm run build`.
-  -->
 </body>
 </html>
