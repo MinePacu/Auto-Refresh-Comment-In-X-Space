@@ -98,19 +98,46 @@ import './popup.css';
   // 새로고침 주기 저장 및 복원
   function setupRefreshInterval() {
     const input = document.getElementById('refreshInterval');
+    const applyBtn = document.getElementById('applyRefreshIntervalBtn');
+
     // 저장된 값 불러오기
     chrome.storage.sync.get(['refreshInterval'], result => {
       if (typeof result.refreshInterval === 'number') {
         input.value = result.refreshInterval;
       }
     });
-    // 값 변경 시 저장
+
+    // 값 변경 시 저장 (기존 로직 유지)
     input.addEventListener('change', () => {
       let value = parseInt(input.value, 10);
       if (isNaN(value) || value < 1) value = 1;
       if (value > 3600) value = 3600;
-      input.value = value;
+      input.value = value; // Ensure input reflects validated value
       chrome.storage.sync.set({ refreshInterval: value });
+    });
+
+    // "적용" 버튼 클릭 시 contentScript로 전송
+    applyBtn.addEventListener('click', () => {
+      let value = parseInt(input.value, 10);
+      if (isNaN(value) || value < 1) value = 1;
+      if (value > 3600) value = 3600;
+      input.value = value; // Ensure input reflects validated value before sending
+
+      // 먼저 storage에 저장 (input.eventListener('change')가 실행되지 않았을 수 있으므로)
+      chrome.storage.sync.set({ refreshInterval: value }, () => {
+        // background.js를 통해 contentScript.js에 메시지 전달
+        chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+          if (tabs[0]?.id) {
+            chrome.runtime.sendMessage({
+              type: 'SET_REFRESH_INTERVAL_BG',
+              payload: {
+                tabId: tabs[0].id,
+                interval: value,
+              },
+            });
+          }
+        });
+      });
     });
   }
 

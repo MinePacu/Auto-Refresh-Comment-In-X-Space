@@ -70,16 +70,29 @@ function waitForTweetsAndReplies(callback, timeout = 10000) {
   check();
 }
 
-let masterOn = true; // 기본값
+let masterOn = true; // 기본값 (onInstalled에서 설정된 값을 우선적으로 사용)
+let currentRefreshInterval = 3; // 기본 새로고침 주기 (초) (onInstalled에서 설정된 값을 우선적으로 사용)
 
-// 마스터 상태를 storage에서 불러오기
-chrome.storage && chrome.storage.sync.get(['masterOn'], result => {
-  if (typeof result.masterOn === 'boolean') {
-    masterOn = result.masterOn;
-  }
-});
+// 마스터 상태 및 새로고침 주기 storage에서 불러오기
+function loadSettingsFromStorage() {
+  chrome.storage && chrome.storage.sync.get(['masterOn', 'refreshInterval'], result => {
+    if (typeof result.masterOn === 'boolean') {
+      masterOn = result.masterOn;
+    }
+    if (typeof result.refreshInterval === 'number') {
+      currentRefreshInterval = result.refreshInterval;
+      console.log('Loaded refresh interval from storage:', currentRefreshInterval);
+    }
+    // 설정 로드 후 초기 기능 실행 여부 결정
+    if (masterOn) {
+      // startContentScriptFeatures(); // MASTER_TOGGLE_CS 메시지 핸들러에서 호출되거나, 페이지 로드 시점에 따라 조절
+    }
+  });
+}
 
-// 마스터 토글 메시지 수신
+loadSettingsFromStorage(); // 스크립트 시작 시 설정 로드
+
+// 마스터 토글 및 새로고침 주기 설정 메시지 수신
 chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'MASTER_TOGGLE_CS') { // background.js로부터 오는 메시지 타입
     masterOn = msg.isOn;
@@ -91,6 +104,17 @@ chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendRespons
       startContentScriptFeatures(); // masterOn이 true일 때 기능 재시작
       console.log('Content script features (re)started by master toggle.');
       sendResponse({ status: 'Content script features (re)started.' });
+    }
+  } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
+    if (typeof msg.interval === 'number') {
+      currentRefreshInterval = msg.interval;
+      // 받은 값을 storage에도 저장 (일관성 유지)
+      chrome.storage.sync.set({ refreshInterval: currentRefreshInterval });
+      console.log('Refresh interval updated by popup:', currentRefreshInterval);
+      sendResponse({ status: 'Refresh interval updated in content script.' });
+      // 여기서 필요하다면, 변경된 주기로 실행 중인 타이머 등을 재설정할 수 있습니다.
+    } else {
+      sendResponse({ status: 'Error: Invalid interval received.' });
     }
   }
 });
