@@ -9,8 +9,8 @@ chrome.runtime.onInstalled.addListener(details => {
   if (details.reason === 'install') {
     // 확장 프로그램이 처음 설치될 때 기본값 설정
     chrome.storage.sync.set({
-      masterOn: true, // 마스터 버튼 기본 상태 ON
-      refreshInterval: 3, // 새로고침 주기 기본값 3초
+      masterOn: false, // 마스터 버튼 기본 상태 OFF
+      refreshInterval: 10, // 새로고침 주기 기본값 10초
     });
     console.log('Default settings applied on installation.');
   }

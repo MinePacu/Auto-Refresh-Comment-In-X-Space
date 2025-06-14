@@ -70,8 +70,17 @@ function waitForTweetsAndReplies(callback, timeout = 10000) {
   check();
 }
 
-let masterOn = true; // 기본값 (onInstalled에서 설정된 값을 우선적으로 사용)
-let currentRefreshInterval = 3; // 기본 새로고침 주기 (초) (onInstalled에서 설정된 값을 우선적으로 사용)
+let masterOn = false; // 기본값 OFF
+let currentRefreshInterval = 10; // 기본값 10초
+let replySettingsButtonElement = null; // 답글 설정 버튼 참조 저장
+let sortByLatestButtonElement = null; // 최신순 정렬 버튼 참조 저장
+let refreshIntervalId = null; // setInterval ID 저장
+
+// XPath 및 지연 시간 상수 정의
+const REPLY_SETTINGS_BUTTON_XPATH = '//*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[1]/div[1]/div/div/div/div/div/div[3]/div/button[2]';
+const MODAL_XPATH = '//*[@id="layers"]/div[2]/div/div/div/div[2]/div/div[3]';
+const SORT_BY_LATEST_BUTTON_XPATH = '//*[@id="layers"]/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div[3]';
+const DELAY_AFTER_REPLY_SETTINGS_CLICK_MS = 700; // 답글 설정 버튼 클릭 후 다음 버튼 클릭 전 대기 시간 (UI 반응에 따라 조정)
 
 // 마스터 상태 및 새로고침 주기 storage에서 불러오기
 function loadSettingsFromStorage() {
@@ -83,90 +92,288 @@ function loadSettingsFromStorage() {
       currentRefreshInterval = result.refreshInterval;
       console.log('Loaded refresh interval from storage:', currentRefreshInterval);
     }
-    // 설정 로드 후 초기 기능 실행 여부 결정
-    if (masterOn) {
-      // startContentScriptFeatures(); // MASTER_TOGGLE_CS 메시지 핸들러에서 호출되거나, 페이지 로드 시점에 따라 조절
-    }
+    // masterOn의 초기 상태에 따라 startContentScriptFeatures 호출 여부가 결정됨
+    // (일반적으로 popup.js의 토글 메시지를 통해 제어됨)
   });
 }
 
-loadSettingsFromStorage(); // 스크립트 시작 시 설정 로드
+loadSettingsFromStorage();
 
-// 마스터 토글 및 새로고침 주기 설정 메시지 수신
+// 메시지 수신 로직 (이전과 동일)
 chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'MASTER_TOGGLE_CS') { // background.js로부터 오는 메시지 타입
+  if (msg.type === 'MASTER_TOGGLE_CS') {
     masterOn = msg.isOn;
     if (!masterOn) {
       stopContentScriptFeatures();
       console.log('Content script features stopped by master toggle.');
       sendResponse({ status: 'Content script features stopped.' });
     } else {
-      startContentScriptFeatures(); // masterOn이 true일 때 기능 재시작
+      startContentScriptFeatures();
       console.log('Content script features (re)started by master toggle.');
       sendResponse({ status: 'Content script features (re)started.' });
     }
   } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
     if (typeof msg.interval === 'number') {
       currentRefreshInterval = msg.interval;
-      // 받은 값을 storage에도 저장 (일관성 유지)
       chrome.storage.sync.set({ refreshInterval: currentRefreshInterval });
-      console.log('Refresh interval updated by popup:', currentRefreshInterval);
-      sendResponse({ status: 'Refresh interval updated in content script.' });
-      // 여기서 필요하다면, 변경된 주기로 실행 중인 타이머 등을 재설정할 수 있습니다.
+      console.log('Refresh interval updated to:', currentRefreshInterval);
+      sendResponse({ status: 'Refresh interval updated.' });
+      if (masterOn && refreshIntervalId) {
+        console.log('Restarting recurring sort click due to interval change.');
+        clearInterval(refreshIntervalId);
+        refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000);
+        console.log(`Recurring sort click interval restarted with new interval: ${currentRefreshInterval}s`);
+      }
     } else {
-      sendResponse({ status: 'Error: Invalid interval received.' });
+      sendResponse({ status: 'Error: Invalid interval.' });
     }
   }
 });
 
-// 기능 수행 함수
-function startContentScriptFeatures() {
-  // 기존 기능을 한 번 실행
-  mainFeatureLogic();
-}
-
-// 기능 멈춤 함수
-function stopContentScriptFeatures() {
-  // setTimeout, setInterval 등 반복 동작이 있다면 clear
-  // 예시: 스크롤 타이머 멈추기 등
-  // 필요시 추가 구현
-}
-
-// 기존 기능을 함수로 분리
-function mainFeatureLogic() {
-  // 현재 사이트가 트위터 또는 X인지 확인
-  if (!masterOn) return;
-  if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
-    console.log('이 유저가 스페이스 중인가?', isUserInSpace());
-
-    const buttons = document.querySelectorAll('button');
-    console.log(
-      `이 페이지에는 ${buttons.length}개의 button 요소가 있습니다.`,
-      buttons
-    );
-    
-    // 주소에 'status'가 포함된 경우(트윗 상세 페이지)
-    if (window.location.pathname.includes('status')) {
-      waitForTweetsAndReplies(() => {
-        if (!masterOn) return;
-        (async function scrollForReplySettings() {
-          console.log('답글에 대한 설정 버튼을 출력하기 위해 강제 스크롤을 시행합니다.');
-          const scrollStep = 100; // 한 번에 스크롤할 픽셀 수
-          for (let i = 0; i < 5; i++) {
-            window.scrollBy(0, scrollStep);
-            await new Promise(res => setTimeout(res, 300)); // 스크롤 후 잠깐 대기
-            if (!masterOn) break;
-          }
-          window.scrollTo(0, 0); // 맨 위로 이동
-        })();
-      });
-    } else {
-      console.log('status가 포함된 트윗 상세 페이지가 아니므로 스크롤을 실행하지 않습니다.');
+/**
+ * 주어진 XPath에 해당하는 요소를 찾아 클릭하는 함수 (단일 클릭용, 참조 저장 안 함)
+ */
+function clickElementByXPath(xpath, description) {
+  try {
+    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const element = result.singleNodeValue;
+    if (element) {
+      console.log(`${description} 요소 찾음 (XPath):`, element);
+      element.click();
+      console.log(`${description} 요소 클릭함 (XPath).`);
+      return true;
     }
-  } else {
-    console.log('현재 사이트는 트위터 또는 X가 아닙니다.');
+    console.warn(`XPath에 해당하는 ${description} 요소 없음:`, xpath);
+    return false;
+  } catch (error) {
+    console.error(`${description} 요소 클릭 중 오류 (XPath):`, error, xpath);
+    return false;
   }
 }
 
-// 최초 실행
-// mainFeatureLogic();
+/**
+ * 특정 XPath를 가진 요소가 DOM에 나타날 때까지 기다리는 함수
+ */
+function waitForElement(xpath, description, timeout = 10000) {
+  return new Promise((resolve) => {
+    const observer = new MutationObserver((mutationsList, obs) => {
+      const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      if (element) {
+        console.log(`${description} 요소를 찾았습니다.`, element);
+        obs.disconnect();
+        resolve(element);
+      }
+    });
+    const initialElement = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    if (initialElement) {
+      console.log(`${description} 요소가 이미 존재합니다.`, initialElement);
+      resolve(initialElement);
+      return;
+    }
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    console.log(`${description} 요소(${xpath}) 관찰 시작.`);
+    setTimeout(() => {
+      const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      if (!element) {
+        console.warn(`${description} 요소 감지 타임아웃 (${timeout}ms).`);
+        observer.disconnect();
+        resolve(null);
+      } else { // 타임아웃 직전에 찾아졌을 수도 있으므로 resolve
+        obs.disconnect();
+        resolve(element);
+      }
+    }, timeout);
+  });
+}
+
+/**
+ * 초기 설정: 답글 설정 버튼과 최신순 정렬 버튼을 찾아 클릭하고 참조 저장
+ * @returns {Promise<boolean>} 성공 여부
+ */
+async function initialSetupAndClickSortByLatest() {
+  console.log("최초 설정 시작: '답글 설정' 버튼 및 '최신순 정렬' 버튼 찾기 및 클릭.");
+  replySettingsButtonElement = null; // 이전 참조 초기화
+  sortByLatestButtonElement = null;  // 이전 참조 초기화
+
+  // 1. 답글 설정 버튼 찾기 (요소 자체를 가져옴)
+  const replySettingsBtnFound = await waitForElement(REPLY_SETTINGS_BUTTON_XPATH, "'답글 설정' 버튼", 7000);
+  if (!replySettingsBtnFound) {
+    console.warn("최초 설정 실패: '답글 설정' 버튼을 찾을 수 없습니다.");
+    return false;
+  }
+  replySettingsButtonElement = replySettingsBtnFound; // 참조 저장
+  console.log("'답글 설정' 버튼 찾음 및 참조 저장:", replySettingsButtonElement);
+
+  // 2. 답글 설정 버튼 클릭
+  try {
+    replySettingsButtonElement.click();
+    console.log("'답글 설정' 버튼 클릭 성공.");
+  } catch (e) {
+    console.error("'답글 설정' 버튼 클릭 중 오류:", e);
+    replySettingsButtonElement = null; // 실패 시 참조 무효화
+    return false;
+  }
+
+  // 3. 모달 대기
+  console.log("'답글 설정 팝업/모달' 대기 중...");
+  const modalElement = await waitForElement(MODAL_XPATH, "답글 설정 팝업/모달", 7000);
+  if (!modalElement) {
+    console.warn("최초 설정 실패: '답글 설정 팝업/모달'이 나타나지 않음.");
+    return false; // 모달 없으면 다음 버튼도 없음
+  }
+  console.log("'답글 설정 팝업/모달' 나타남.");
+
+  // 4. 최신순 정렬 버튼 대기 및 찾기 (요소 자체를 가져옴)
+  console.log("'최신순 정렬 버튼' 대기 중...");
+  const sortButtonFound = await waitForElement(SORT_BY_LATEST_BUTTON_XPATH, "최신순 정렬 버튼", 5000);
+  if (!sortButtonFound) {
+    console.warn("최초 설정 실패: '최신순 정렬 버튼'을 모달 내에서 찾지 못함.");
+    return false;
+  }
+  sortByLatestButtonElement = sortButtonFound; // 참조 저장
+  console.log("'최신순 정렬 버튼' 찾음 및 참조 저장:", sortByLatestButtonElement);
+
+  // 5. 최신순 정렬 버튼 클릭
+  try {
+    sortByLatestButtonElement.click();
+    console.log("최초 설정: '최신순 정렬 버튼' 클릭 성공.");
+    return true; // 모든 과정 성공
+  } catch (e) {
+    console.error("최초 설정 중 '최신순 정렬 버튼' 클릭 오류:", e);
+    sortByLatestButtonElement = null; // 실패 시 참조 무효화
+    return false;
+  }
+}
+
+/**
+ * 반복 작업: 저장된 '답글 설정' 버튼과 '최신순 정렬' 버튼을 차례로 클릭
+ */
+async function performRecurringSortClick() {
+  if (!masterOn) {
+    console.log('반복 정렬 중지: Master OFF.');
+    if (refreshIntervalId) clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+    return;
+  }
+
+  console.log(`반복 정렬 실행 (주기: ${currentRefreshInterval}초)`);
+
+  const isReplySettingsButtonValid = replySettingsButtonElement && document.body.contains(replySettingsButtonElement);
+
+  if (isReplySettingsButtonValid) {
+    console.log("저장된 버튼 참조로 순차적 클릭 시도...");
+    try {
+      console.log("1. '답글 설정' 버튼 클릭 (반복)");
+      replySettingsButtonElement.click();
+
+      console.log(`${DELAY_AFTER_REPLY_SETTINGS_CLICK_MS}ms 대기 (반복)...`);
+      await new Promise(resolve => setTimeout(resolve, DELAY_AFTER_REPLY_SETTINGS_CLICK_MS));
+
+      console.log("'답글 설정 팝업/모달' 재수집 대기 중... (반복)");
+      const sortButtonFound = await waitForElement(SORT_BY_LATEST_BUTTON_XPATH, "최신순 정렬 버튼", 5000);
+      // 대기 후 sortByLatestButtonElement가 여전히 유효한지 다시 한번 확인
+      // (모달이 닫혔거나, 내용이 변경되어 버튼이 사라졌을 수 있음)
+      if (sortButtonFound) {
+        console.log("2. '최신순 정렬' 버튼 클릭 (반복)");
+        sortButtonFound.click();
+        console.log("'최신순 정렬' 클릭 성공 (반복).");
+      } else {
+        console.warn("'최신순 정렬' 버튼이 대기 후 유효하지 않음. 재설정 필요.");
+        // 참조 무효화하여 다음 주기에 재설정 시도
+        replySettingsButtonElement = null;
+        sortButtonFound = null;
+      }
+    } catch (e) {
+      console.error("저장된 버튼 순차적 클릭 중 오류 (반복):", e);
+      replySettingsButtonElement = null;
+      sortButtonFound = null;
+    }
+  } else {
+    console.log("버튼 참조가 없거나 유효하지 않음. 전체 재설정 시도...");
+    const setupSuccess = await initialSetupAndClickSortByLatest();
+    if (setupSuccess) {
+      console.log("버튼 재설정 및 첫 순차 클릭 성공.");
+    } else {
+      console.warn("버튼 재설정 실패. 다음 주기에 다시 시도.");
+    }
+  }
+}
+
+/**
+ * 주 기능 로직: 스크롤, 초기 버튼 설정 및 반복 클릭 인터벌 시작
+ */
+async function mainFeatureLogic() {
+  if (!masterOn) {
+    console.log('기능 실행 안 함: Master OFF.');
+    return;
+  }
+
+  if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
+    if (window.location.pathname.includes('status')) {
+      console.log('트윗 상세 페이지 감지. 답글 로드 대기...');
+      waitForTweetsAndReplies(async () => {
+        if (!masterOn) return;
+        console.log('답글 로드 완료. 스크롤 및 버튼 설정 시작...');
+
+        const scrollStep = 100;
+        for (let i = 0; i < 5; i++) {
+          if (!masterOn) { console.log('스크롤 중 Master OFF. 중단.'); return; }
+          window.scrollBy(0, scrollStep);
+          await new Promise(res => setTimeout(res, 300));
+        }
+        if (!masterOn) { console.log('스크롤 후 Master OFF. 중단.'); return; }
+        window.scrollTo(0, 0);
+        console.log('맨 위로 스크롤 완료.');
+
+        if (masterOn) {
+          const initialSetupSuccess = await initialSetupAndClickSortByLatest();
+          if (initialSetupSuccess) {
+            console.log("최초 버튼 설정 및 순차 클릭 성공.");
+          } else {
+            console.warn("최초 버튼 설정 실패. 반복 메커니즘이 재시도할 것입니다.");
+          }
+
+          if (masterOn) {
+            if (refreshIntervalId) clearInterval(refreshIntervalId);
+            refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000);
+            console.log(`순차적 버튼 클릭 반복 인터벌 시작 (주기: ${currentRefreshInterval}초)`);
+          }
+        }
+      });
+    } else {
+      console.log('트윗 상세 페이지 아님. 자동 정렬 기능 비활성.');
+      stopContentScriptFeatures();
+    }
+  } else {
+    console.log('트위터/X 아님. 자동 정렬 기능 비활성.');
+    stopContentScriptFeatures();
+  }
+}
+
+/**
+ * 확장 기능 시작 시 호출
+ */
+function startContentScriptFeatures() {
+  console.log('콘텐츠 스크립트 기능 시작 중...');
+  if (refreshIntervalId) {
+    clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+  }
+  replySettingsButtonElement = null; // 시작 시 참조 초기화
+  sortByLatestButtonElement = null;  // 시작 시 참조 초기화
+  mainFeatureLogic();
+}
+
+/**
+ * 확장 기능 중지 시 호출
+ */
+function stopContentScriptFeatures() {
+  console.log('콘텐츠 스크립트 기능 중지 중...');
+  if (refreshIntervalId) {
+    clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+    console.log('순차적 버튼 클릭 반복 인터벌 중지됨.');
+  }
+  replySettingsButtonElement = null;
+  sortByLatestButtonElement = null;
+}

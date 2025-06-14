@@ -154,7 +154,7 @@ import './popup.css';
     const btn = document.getElementById('masterToggleBtn');
     // 저장된 상태 불러오기
     chrome.storage.sync.get(['masterOn'], result => {
-      const isOn = result.masterOn !== false; // 기본값 true
+      const isOn = result.masterOn === true; // 기본값 false (OFF)
       updateMasterBtn(isOn);
     });
 
