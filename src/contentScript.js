@@ -186,61 +186,63 @@ function waitForElement(xpath, description, timeout = 10000) {
   });
 }
 
+// ... (initialSetupAndClickSortByLatest 함수에서 sortByLatestButtonElement 참조 저장 부분은 유지해도 되나,
+// performRecurringSortClick에서 매번 waitForElement로 최신순 버튼을 찾는다면,
+// initialSetupAndClickSortByLatest에서 sortByLatestButtonElement = sortButtonFound; 줄은 필수는 아님.
+// 하지만 일관성을 위해 남겨두거나, performRecurringSortClick에서만 사용하도록 조정 가능)
 /**
  * 초기 설정: 답글 설정 버튼과 최신순 정렬 버튼을 찾아 클릭하고 참조 저장
  * @returns {Promise<boolean>} 성공 여부
  */
+// initialSetupAndClickSortByLatest 함수 수정 (sortByLatestButtonElement 저장 부분 명확히)
 async function initialSetupAndClickSortByLatest() {
   console.log("최초 설정 시작: '답글 설정' 버튼 및 '최신순 정렬' 버튼 찾기 및 클릭.");
   replySettingsButtonElement = null; // 이전 참조 초기화
   sortByLatestButtonElement = null;  // 이전 참조 초기화
 
-  // 1. 답글 설정 버튼 찾기 (요소 자체를 가져옴)
   const replySettingsBtnFound = await waitForElement(REPLY_SETTINGS_BUTTON_XPATH, "'답글 설정' 버튼", 7000);
   if (!replySettingsBtnFound) {
     console.warn("최초 설정 실패: '답글 설정' 버튼을 찾을 수 없습니다.");
     return false;
   }
-  replySettingsButtonElement = replySettingsBtnFound; // 참조 저장
+  replySettingsButtonElement = replySettingsBtnFound;
   console.log("'답글 설정' 버튼 찾음 및 참조 저장:", replySettingsButtonElement);
 
-  // 2. 답글 설정 버튼 클릭
   try {
     replySettingsButtonElement.click();
     console.log("'답글 설정' 버튼 클릭 성공.");
   } catch (e) {
     console.error("'답글 설정' 버튼 클릭 중 오류:", e);
-    replySettingsButtonElement = null; // 실패 시 참조 무효화
+    replySettingsButtonElement = null;
     return false;
   }
 
-  // 3. 모달 대기
   console.log("'답글 설정 팝업/모달' 대기 중...");
   const modalElement = await waitForElement(MODAL_XPATH, "답글 설정 팝업/모달", 7000);
   if (!modalElement) {
     console.warn("최초 설정 실패: '답글 설정 팝업/모달'이 나타나지 않음.");
-    return false; // 모달 없으면 다음 버튼도 없음
+    return false;
   }
   console.log("'답글 설정 팝업/모달' 나타남.");
 
-  // 4. 최신순 정렬 버튼 대기 및 찾기 (요소 자체를 가져옴)
   console.log("'최신순 정렬 버튼' 대기 중...");
   const sortButtonFound = await waitForElement(SORT_BY_LATEST_BUTTON_XPATH, "최신순 정렬 버튼", 5000);
   if (!sortButtonFound) {
     console.warn("최초 설정 실패: '최신순 정렬 버튼'을 모달 내에서 찾지 못함.");
     return false;
   }
-  sortByLatestButtonElement = sortButtonFound; // 참조 저장
-  console.log("'최신순 정렬 버튼' 찾음 및 참조 저장:", sortByLatestButtonElement);
+  // sortByLatestButtonElement = sortButtonFound; // 반복 시 매번 찾으므로, 여기서의 저장은 선택적
+  console.log("'최신순 정렬 버튼' 찾음:", sortButtonFound);
 
-  // 5. 최신순 정렬 버튼 클릭
   try {
-    sortByLatestButtonElement.click();
+    sortButtonFound.click(); // 찾은 버튼을 바로 클릭
     console.log("최초 설정: '최신순 정렬 버튼' 클릭 성공.");
-    return true; // 모든 과정 성공
+    // 초기 설정 시에는 sortByLatestButtonElement에 할당할 필요가 없을 수 있음 (반복 시 매번 찾으므로)
+    // 하지만, 만약 초기 설정 후 바로 다음 반복 턴에 이 참조를 쓰고 싶다면 할당.
+    // 여기서는 performRecurringSortClick이 매번 찾으므로, 이 할당은 생략 가능.
+    return true;
   } catch (e) {
     console.error("최초 설정 중 '최신순 정렬 버튼' 클릭 오류:", e);
-    sortByLatestButtonElement = null; // 실패 시 참조 무효화
     return false;
   }
 }
@@ -259,9 +261,11 @@ async function performRecurringSortClick() {
   console.log(`반복 정렬 실행 (주기: ${currentRefreshInterval}초)`);
 
   const isReplySettingsButtonValid = replySettingsButtonElement && document.body.contains(replySettingsButtonElement);
+  // sortByLatestButtonElement는 매번 다시 찾으므로, 여기서는 replySettingsButtonElement만 주로 확인
+  // 또는 initialSetup에서 둘 다 설정되었는지 확인하는 플래그를 사용할 수도 있음.
 
-  if (isReplySettingsButtonValid) {
-    console.log("저장된 버튼 참조로 순차적 클릭 시도...");
+  if (isReplySettingsButtonValid) { // 답글 설정 버튼 참조가 우선 유효해야 함
+    console.log("저장된 '답글 설정' 버튼 참조로 순차적 클릭 시도...");
     try {
       console.log("1. '답글 설정' 버튼 클릭 (반복)");
       replySettingsButtonElement.click();
@@ -269,32 +273,49 @@ async function performRecurringSortClick() {
       console.log(`${DELAY_AFTER_REPLY_SETTINGS_CLICK_MS}ms 대기 (반복)...`);
       await new Promise(resolve => setTimeout(resolve, DELAY_AFTER_REPLY_SETTINGS_CLICK_MS));
 
-      console.log("'답글 설정 팝업/모달' 재수집 대기 중... (반복)");
-      const sortButtonFound = await waitForElement(SORT_BY_LATEST_BUTTON_XPATH, "최신순 정렬 버튼", 5000);
-      // 대기 후 sortByLatestButtonElement가 여전히 유효한지 다시 한번 확인
-      // (모달이 닫혔거나, 내용이 변경되어 버튼이 사라졌을 수 있음)
+      // 모달이 열린 후 '최신순 정렬' 버튼을 매번 XPath로 다시 찾아서 클릭
+      console.log("'최신순 정렬 버튼' XPath로 찾기 시도 (반복)...");
+      const sortButtonFound = await waitForElement(SORT_BY_LATEST_BUTTON_XPATH, "최신순 정렬 버튼 (반복)", 5000);
+
       if (sortButtonFound) {
         console.log("2. '최신순 정렬' 버튼 클릭 (반복)");
         sortButtonFound.click();
         console.log("'최신순 정렬' 클릭 성공 (반복).");
       } else {
-        console.warn("'최신순 정렬' 버튼이 대기 후 유효하지 않음. 재설정 필요.");
-        // 참조 무효화하여 다음 주기에 재설정 시도
-        replySettingsButtonElement = null;
-        sortButtonFound = null;
+        console.warn("'최신순 정렬' 버튼을 모달 내에서 찾지 못함 (반복). 재설정 필요할 수 있음.");
+        // 이 경우, 다음 턴에 isReplySettingsButtonValid는 true일 수 있으나,
+        // 여기서 문제가 계속되면 결국 replySettingsButtonElement도 유효하지 않게 될 수 있음 (페이지 변경 등)
+        // 또는, 여기서 바로 재설정을 시도하도록 유도할 수 있음.
+        // 예를 들어, replySettingsButtonElement = null; 로 설정하여 다음 턴에 재설정 로직을 타도록 함.
+        // 하지만 현재는 재설정 로직은 replySettingsButtonElement가 없을 때 타도록 되어 있음.
       }
     } catch (e) {
       console.error("저장된 버튼 순차적 클릭 중 오류 (반복):", e);
+      // 오류 발생 시, 버튼 참조를 무효화하여 다음 턴에 재설정 시도
       replySettingsButtonElement = null;
-      sortButtonFound = null;
+      sortByLatestButtonElement = null; // sortByLatestButtonElement는 이미 매번 찾으므로 영향 적음
     }
   } else {
-    console.log("버튼 참조가 없거나 유효하지 않음. 전체 재설정 시도...");
+    console.log("'답글 설정' 버튼 참조가 없거나 유효하지 않음. 전체 재설정 시도...");
     const setupSuccess = await initialSetupAndClickSortByLatest();
     if (setupSuccess) {
       console.log("버튼 재설정 및 첫 순차 클릭 성공.");
     } else {
-      console.warn("버튼 재설정 실패. 다음 주기에 다시 시도.");
+      console.warn("버튼 재설정 실패. 페이지 유효성 검사 및 자동 OFF 조건 확인.");
+      // 재설정 실패 시 페이지 유효성 검사
+      const isTwitterSite = window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com';
+      const isStatusPage = window.location.pathname.includes('status');
+
+      if (!isTwitterSite || !isStatusPage) {
+        console.warn("재설정 실패했고, 현재 페이지가 트위터/X의 status 페이지가 아닙니다. 자동 새로고침 기능을 중지하고 마스터 버튼을 OFF합니다.");
+        masterOn = false; // 로컬 상태 변경
+        chrome.storage.sync.set({ masterOn: false }, () => { // 스토리지에 상태 저장
+          console.log("마스터 상태가 스토리지에 OFF로 업데이트되었습니다. 팝업은 다음 열릴 때 이 상태를 반영합니다.");
+        });
+        stopContentScriptFeatures(); // 인터벌 중지 및 관련 기능 정리
+      } else {
+        console.log("페이지는 유효하나 버튼 재설정에 실패했습니다. 다음 주기에 다시 시도합니다.");
+      }
     }
   }
 }
