@@ -1,11 +1,10 @@
-# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Refresh In X Space
+# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Refresh Comment In X Space
 
-My Chrome Extension
+X (전 트위터)에서 스페이스에 대한 상세 게시글 창에 들어갔을 때, 답글들을 최신 순으로 자동 정렬합니다.
 
-## Features
+## 기능
 
-- Feature 1
-- Feature 2
+- 일정 주기마다 답글 자동으로 최신 순으로 정렬
 
 ## Install
 
