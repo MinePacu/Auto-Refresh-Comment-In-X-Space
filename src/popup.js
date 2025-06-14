@@ -138,7 +138,14 @@ import './popup.css';
         // contentScript에 마스터 상태 전달
         chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
           if (tabs[0]?.id) {
-            chrome.tabs.sendMessage(tabs[0].id, { type: 'MASTER_TOGGLE', isOn });
+            // background.js를 통해 contentScript.js에 메시지 전달
+            chrome.runtime.sendMessage({
+              type: 'MASTER_TOGGLE_BG',
+              payload: {
+                tabId: tabs[0].id,
+                isOn: isOn,
+              },
+            });
           }
         });
       });
@@ -151,7 +158,7 @@ import './popup.css';
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    restoreCounter();
+    //restoreCounter();
     setupMasterToggle();
     setupRefreshInterval();
     showCurrentUrl();

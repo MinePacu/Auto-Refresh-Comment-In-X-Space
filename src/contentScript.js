@@ -81,12 +81,16 @@ chrome.storage && chrome.storage.sync.get(['masterOn'], result => {
 
 // 마스터 토글 메시지 수신
 chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'MASTER_TOGGLE') {
+  if (msg.type === 'MASTER_TOGGLE_CS') { // background.js로부터 오는 메시지 타입
     masterOn = msg.isOn;
     if (!masterOn) {
       stopContentScriptFeatures();
+      console.log('Content script features stopped by master toggle.');
+      sendResponse({ status: 'Content script features stopped.' });
     } else {
-      startContentScriptFeatures();
+      startContentScriptFeatures(); // masterOn이 true일 때 기능 재시작
+      console.log('Content script features (re)started by master toggle.');
+      sendResponse({ status: 'Content script features (re)started.' });
     }
   }
 });
@@ -141,4 +145,4 @@ function mainFeatureLogic() {
 }
 
 // 최초 실행
-mainFeatureLogic();
+// mainFeatureLogic();
