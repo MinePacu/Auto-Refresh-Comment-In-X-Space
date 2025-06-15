@@ -97,11 +97,21 @@ function loadSettingsFromStorage() {
       currentClickDelayMs = result.clickDelayMs;
       console.log('Loaded click delay from storage:', currentClickDelayMs);
     }
-    // masterOn의 초기 상태에 따라 startContentScriptFeatures 호출 여부가 결정됨
+
+    // 설정 로드 후, masterOn 상태에 따라 기능 시작/중지 결정
+    // 페이지 새로고침 시 이 로직이 실행되어 이전 상태를 복원함
+    if (masterOn) {
+      console.log('Master is ON. Attempting to start features after settings load (e.g., on page reload/navigation).');
+      startContentScriptFeatures();
+    } else {
+      console.log('Master is OFF. Features will not start automatically.');
+      // masterOn이 false일 때, 만약 이전에 실행 중이던 인터벌이 있다면 확실히 중지
+      stopContentScriptFeatures();
+    }
   });
 }
 
-loadSettingsFromStorage();
+loadSettingsFromStorage(); // 스크립트 시작 시 설정 로드 및 상태에 따른 기능 시작/중지
 
 // 메시지 수신 로직
 chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -200,7 +210,7 @@ function waitForElement(xpath, description, timeout = 10000) {
         resolve(element);
       }
     }, timeout);
-  });
+  }); 
 }
 
 // ... (initialSetupAndClickSortByLatest 함수에서 sortByLatestButtonElement 참조 저장 부분은 유지해도 되나,
@@ -353,12 +363,19 @@ async function mainFeatureLogic() {
         if (!masterOn) return;
         console.log('답글 로드 완료. 스크롤 및 버튼 설정 시작...');
 
-        const scrollStep = 100;
-        for (let i = 0; i < 5; i++) {
-          if (!masterOn) { console.log('스크롤 중 Master OFF. 중단.'); return; }
-          window.scrollBy(0, scrollStep);
-          await new Promise(res => setTimeout(res, 300));
-        }
+        // const scrollStep = 100;
+        // for (let i = 0; i < 5; i++) {
+        //   if (!masterOn) { console.log('스크롤 중 Master OFF. 중단.'); return; }
+        //   window.scrollBy(0, scrollStep);
+        //   await new Promise(res => setTimeout(res, 300));
+        // }
+        
+        // 500픽셀 한 번 스크롤
+        if (!masterOn) { console.log('스크롤 전 Master OFF. 중단.'); return; }
+        console.log('답글에 대한 설정 버튼을 출력하기 위해 500픽셀 스크롤을 시행합니다.');
+        window.scrollBy(0, 500);
+        await new Promise(res => setTimeout(res, 300)); // 스크롤 후 DOM 업데이트를 위한 약간의 대기
+
         if (!masterOn) { console.log('스크롤 후 Master OFF. 중단.'); return; }
         window.scrollTo(0, 0);
         console.log('맨 위로 스크롤 완료.');
