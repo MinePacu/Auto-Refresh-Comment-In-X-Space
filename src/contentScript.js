@@ -114,14 +114,16 @@ chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendRespons
     }
   } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
     if (typeof msg.interval === 'number') {
-      currentRefreshInterval = msg.interval;
-      chrome.storage.sync.set({ refreshInterval: currentRefreshInterval });
+      currentRefreshInterval = msg.interval; // 1. 로컬 변수 업데이트
+      chrome.storage.sync.set({ refreshInterval: currentRefreshInterval }); // 2. 변경된 값 스토리지에 저장
       console.log('Refresh interval updated to:', currentRefreshInterval);
       sendResponse({ status: 'Refresh interval updated.' });
+
+      // 3. 마스터 버튼이 ON이고, 기존 인터벌이 실행 중이었다면 재시작
       if (masterOn && refreshIntervalId) {
         console.log('Restarting recurring sort click due to interval change.');
-        clearInterval(refreshIntervalId);
-        refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000);
+        clearInterval(refreshIntervalId); // 3a. 기존 인터벌 중지
+        refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000); // 3b. 새 주기로 인터벌 시작
         console.log(`Recurring sort click interval restarted with new interval: ${currentRefreshInterval}s`);
       }
     } else {
