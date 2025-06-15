@@ -97,21 +97,11 @@ function loadSettingsFromStorage() {
       currentClickDelayMs = result.clickDelayMs;
       console.log('Loaded click delay from storage:', currentClickDelayMs);
     }
-
-    // 설정 로드 후, masterOn 상태에 따라 기능 시작/중지 결정
-    // 페이지 새로고침 시 이 로직이 실행되어 이전 상태를 복원함
-    if (masterOn) {
-      console.log('Master is ON. Attempting to start features after settings load (e.g., on page reload/navigation).');
-      startContentScriptFeatures();
-    } else {
-      console.log('Master is OFF. Features will not start automatically.');
-      // masterOn이 false일 때, 만약 이전에 실행 중이던 인터벌이 있다면 확실히 중지
-      stopContentScriptFeatures();
-    }
+    // masterOn의 초기 상태에 따라 startContentScriptFeatures 호출 여부가 결정됨
   });
 }
 
-loadSettingsFromStorage(); // 스크립트 시작 시 설정 로드 및 상태에 따른 기능 시작/중지
+loadSettingsFromStorage();
 
 // 메시지 수신 로직
 chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -353,30 +343,31 @@ async function performRecurringSortClick() {
 async function mainFeatureLogic() {
   if (!masterOn) {
     console.log('기능 실행 안 함: Master OFF.');
+    setOperationalState(CS_STATE_IDLE); // Ensure state is IDLE if master is off
     return;
   }
+
+  setOperationalState(CS_STATE_PAGE_VALIDATION); // 사이트 판단 시작
 
   if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
     if (window.location.pathname.includes('status')) {
       console.log('트윗 상세 페이지 감지. 답글 로드 대기...');
+      // PAGE_VALIDATION 상태는 여기서 유효함
       waitForTweetsAndReplies(async () => {
-        if (!masterOn) return;
+        if (!masterOn) {
+          setOperationalState(CS_STATE_IDLE);
+          return;
+        }
+        setOperationalState(CS_STATE_INITIALIZING); // 스크롤 및 초기 설정 시작
         console.log('답글 로드 완료. 스크롤 및 버튼 설정 시작...');
-
-        // const scrollStep = 100;
-        // for (let i = 0; i < 5; i++) {
-        //   if (!masterOn) { console.log('스크롤 중 Master OFF. 중단.'); return; }
-        //   window.scrollBy(0, scrollStep);
-        //   await new Promise(res => setTimeout(res, 300));
-        // }
         
         // 500픽셀 한 번 스크롤
-        if (!masterOn) { console.log('스크롤 전 Master OFF. 중단.'); return; }
+        if (!masterOn) { console.log('스크롤 전 Master OFF. 중단.'); setOperationalState(CS_STATE_IDLE); return; }
         console.log('답글에 대한 설정 버튼을 출력하기 위해 500픽셀 스크롤을 시행합니다.');
         window.scrollBy(0, 500);
         await new Promise(res => setTimeout(res, 300)); // 스크롤 후 DOM 업데이트를 위한 약간의 대기
 
-        if (!masterOn) { console.log('스크롤 후 Master OFF. 중단.'); return; }
+        if (!masterOn) { console.log('스크롤 후 Master OFF. 중단.'); setOperationalState(CS_STATE_IDLE); return; }
         window.scrollTo(0, 0);
         console.log('맨 위로 스크롤 완료.');
 
