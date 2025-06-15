@@ -77,10 +77,10 @@ import './popup.css';
       masterBtn.classList.toggle('off', !isOn);
 
       if (isOn) {
-        statusTextElement.textContent = 'Status: Active';
+        statusTextElement.textContent = '상태: 활성화됨';
         loadingSpinnerElement.style.display = 'block';
       } else {
-        statusTextElement.textContent = 'Status: Disabled';
+        statusTextElement.textContent = '상태: 비활성화됨';
         loadingSpinnerElement.style.display = 'none';
       }
     }
