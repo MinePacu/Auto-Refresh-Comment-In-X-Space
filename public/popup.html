@@ -17,19 +17,24 @@
 
     <!-- 기능 컨테이너 -->
     <div class="feature-container">
+      <div class="status-indicator-container">
+        <span id="statusText" class="status-text">Status: Unknown</span>
+        <div id="loadingSpinner" class="loading-spinner" style="display: none;"></div>
+      </div>
       <div class="refresh-interval-setting" style="margin-bottom: 10px;">
         <label for="refreshInterval">새로고침 주기(초):</label>
         <input type="number" id="refreshInterval" min="1" max="3600" value="10" style="width:60px;" />
         <button id="applyRefreshIntervalBtn" class="button" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;">적용</button>
       </div>
-      <div class="current-url">
-        <label>현재 주소:</label>
-        <span id="currentUrl">-</span>
+    </div>
+    <!-- 설정 컨테이너 -->
+    <div class="settings-container feature-container"> <!-- Added feature-container class for consistent styling -->
+      <div class="click-delay-setting" style="margin-bottom: 10px;">
+        <label for="clickDelay">클릭 간 대기시간(ms):</label>
+        <input type="number" id="clickDelay" min="0" max="10000" value="700" style="width:60px;" />
+        <button id="applyClickDelayBtn" class="button" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;">적용</button>
       </div>
     </div>
-
-    <p class="title">Chrome Extension is Ready!</p>
-    <p class="subtitle">Start by updating <code>popup.html</code></p>
   </div>
 
   <script src="popup.js"></script>

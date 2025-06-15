@@ -90,10 +90,39 @@ code {
 }
 
 .divider {
-    margin: 30px auto 25px;
+    margin: 20px auto 15px; /* Adjusted margin */
     width: 50px;
     border: .5px dashed #000;
     opacity: .1;
+}
+
+.status-indicator-container {
+  display: flex;
+  align-items: center;
+  /* justify-content: flex-start; Remove to allow centering if feature-container is text-align: center */
+  margin-bottom: 10px;
+  gap: 8px; /* Space between text and spinner */
+  width: 100%; /* Ensure it takes width for potential centering */
+  padding-left: 5px; /* Align with other feature container items if needed */
+}
+
+.status-text {
+  font-size: 12px;
+  font-weight: 500; /* Slightly less bold */
+}
+
+.loading-spinner {
+  border: 3px solid #f0f0f0; /* Lighter grey */
+  border-top: 3px solid #0078D4; /* VS Code Blue / Microsoft Blue */
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .feature-container {

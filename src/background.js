@@ -11,6 +11,7 @@ chrome.runtime.onInstalled.addListener(details => {
     chrome.storage.sync.set({
       masterOn: false, // 마스터 버튼 기본 상태 OFF
       refreshInterval: 10, // 새로고침 주기 기본값 10초
+      clickDelayMs: 700, // 클릭 간 대기 시간 기본값 700ms
     });
     console.log('Default settings applied on installation.');
   }
@@ -62,6 +63,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ status: 'Refresh interval relayed to content script' });
     } else {
       sendResponse({ status: 'Error: tabId or interval not provided or invalid' });
+    }
+    return true; // 비동기 응답을 위해 true 반환
+  } else if (request.type === 'SET_CLICK_DELAY_BG') {
+    // popup.js로부터 클릭 간 대기시간 설정을 받아 contentScript.js로 전달
+    if (request.payload && typeof request.payload.tabId === 'number' && typeof request.payload.delay === 'number') {
+      chrome.tabs.sendMessage(request.payload.tabId, {
+        type: 'SET_CLICK_DELAY_CS', // contentScript가 받을 메시지 타입
+        delay: request.payload.delay,
+      }, response => {
+        if (chrome.runtime.lastError) {
+          console.log('Error sending click delay to content script:', chrome.runtime.lastError.message);
+        } else {
+          console.log('Click delay sent to content script, response:', response);
+        }
+      });
+      sendResponse({ status: 'Click delay relayed to content script' });
+    } else {
+      sendResponse({ status: 'Error: tabId or delay not provided or invalid' });
     }
     return true; // 비동기 응답을 위해 true 반환
   }

@@ -75,16 +75,17 @@ let currentRefreshInterval = 10; // 기본값 10초
 let replySettingsButtonElement = null; // 답글 설정 버튼 참조 저장
 let sortByLatestButtonElement = null; // 최신순 정렬 버튼 참조 저장
 let refreshIntervalId = null; // setInterval ID 저장
+let currentClickDelayMs = 700; // 클릭 간 대기 시간 기본값
 
 // XPath 및 지연 시간 상수 정의
 const REPLY_SETTINGS_BUTTON_XPATH = '//*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[1]/div[1]/div/div/div/div/div/div[3]/div/button[2]';
 const MODAL_XPATH = '//*[@id="layers"]/div[2]/div/div/div/div[2]/div/div[3]';
 const SORT_BY_LATEST_BUTTON_XPATH = '//*[@id="layers"]/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div[3]';
-const DELAY_AFTER_REPLY_SETTINGS_CLICK_MS = 700; // 답글 설정 버튼 클릭 후 다음 버튼 클릭 전 대기 시간 (UI 반응에 따라 조정)
+// const DELAY_AFTER_REPLY_SETTINGS_CLICK_MS = 700; // 이 상수는 currentClickDelayMs 변수로 대체됨
 
 // 마스터 상태 및 새로고침 주기 storage에서 불러오기
 function loadSettingsFromStorage() {
-  chrome.storage && chrome.storage.sync.get(['masterOn', 'refreshInterval'], result => {
+  chrome.storage && chrome.storage.sync.get(['masterOn', 'refreshInterval', 'clickDelayMs'], result => {
     if (typeof result.masterOn === 'boolean') {
       masterOn = result.masterOn;
     }
@@ -92,14 +93,17 @@ function loadSettingsFromStorage() {
       currentRefreshInterval = result.refreshInterval;
       console.log('Loaded refresh interval from storage:', currentRefreshInterval);
     }
+    if (typeof result.clickDelayMs === 'number') {
+      currentClickDelayMs = result.clickDelayMs;
+      console.log('Loaded click delay from storage:', currentClickDelayMs);
+    }
     // masterOn의 초기 상태에 따라 startContentScriptFeatures 호출 여부가 결정됨
-    // (일반적으로 popup.js의 토글 메시지를 통해 제어됨)
   });
 }
 
 loadSettingsFromStorage();
 
-// 메시지 수신 로직 (이전과 동일)
+// 메시지 수신 로직
 chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'MASTER_TOGGLE_CS') {
     masterOn = msg.isOn;
@@ -128,6 +132,17 @@ chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendRespons
       }
     } else {
       sendResponse({ status: 'Error: Invalid interval.' });
+    }
+  } else if (msg.type === 'SET_CLICK_DELAY_CS') {
+    if (typeof msg.delay === 'number') {
+      currentClickDelayMs = msg.delay;
+      chrome.storage.sync.set({ clickDelayMs: currentClickDelayMs }); // 스토리지에도 저장 (일관성)
+      console.log('Click delay updated to:', currentClickDelayMs);
+      sendResponse({ status: 'Click delay updated in content script.' });
+      // 이 변경은 performRecurringSortClick 내부의 await new Promise에서 다음 실행 시 자동으로 사용됨
+      // 별도로 인터벌을 재시작할 필요 없음
+    } else {
+      sendResponse({ status: 'Error: Invalid click delay.'});
     }
   }
 });
@@ -272,8 +287,8 @@ async function performRecurringSortClick() {
       console.log("1. '답글 설정' 버튼 클릭 (반복)");
       replySettingsButtonElement.click();
 
-      console.log(`${DELAY_AFTER_REPLY_SETTINGS_CLICK_MS}ms 대기 (반복)...`);
-      await new Promise(resolve => setTimeout(resolve, DELAY_AFTER_REPLY_SETTINGS_CLICK_MS));
+      console.log(`${currentClickDelayMs}ms 대기 (반복)...`); // 변수 사용
+      await new Promise(resolve => setTimeout(resolve, currentClickDelayMs)); // 변수 사용
 
       // 모달이 열린 후 '최신순 정렬' 버튼을 매번 XPath로 다시 찾아서 클릭
       console.log("'최신순 정렬 버튼' XPath로 찾기 시도 (반복)...");

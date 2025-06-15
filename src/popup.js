@@ -10,91 +10,7 @@ import './popup.css';
   // To get storage access, we have to mention it in `permissions` property of manifest.json file
   // More information on Permissions can we found at
   // https://developer.chrome.com/extensions/declare_permissions
-  /*const counterStorage = {
-    get: cb => {
-      chrome.storage.sync.get(['count'], result => {
-        cb(result.count);
-      });
-    },
-    set: (value, cb) => {
-      chrome.storage.sync.set(
-        {
-          count: value,
-        },
-        () => {
-          cb();
-        }
-      );
-    },
-  };
-
-  function setupCounter(initialValue = 0) {
-    document.getElementById('counter').innerHTML = initialValue;
-
-    document.getElementById('incrementBtn').addEventListener('click', () => {
-      updateCounter({
-        type: 'INCREMENT',
-      });
-    });
-
-    document.getElementById('decrementBtn').addEventListener('click', () => {
-      updateCounter({
-        type: 'DECREMENT',
-      });
-    });
-  }
-
-  function updateCounter({ type }) {
-    counterStorage.get(count => {
-      let newCount;
-
-      if (type === 'INCREMENT') {
-        newCount = count + 1;
-      } else if (type === 'DECREMENT') {
-        newCount = count - 1;
-      } else {
-        newCount = count;
-      }
-
-      counterStorage.set(newCount, () => {
-        document.getElementById('counter').innerHTML = newCount;
-
-        // Communicate with content script of
-        // active tab by sending a message
-        chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-          const tab = tabs[0];
-
-          chrome.tabs.sendMessage(
-            tab.id,
-            {
-              type: 'COUNT',
-              payload: {
-                count: newCount,
-              },
-            },
-            response => {
-              console.log('Current count value passed to contentScript file');
-            }
-          );
-        });
-      });
-    });
-  }
-
-  function restoreCounter() {
-    // Restore count value
-    counterStorage.get(count => {
-      if (typeof count === 'undefined') {
-        // Set counter value as 0
-        counterStorage.set(0, () => {
-          setupCounter(0);
-        });
-      } else {
-        setupCounter(count);
-      }
-    });
-  }
-  */
+  
   // 새로고침 주기 저장 및 복원
   function setupRefreshInterval() {
     const input = document.getElementById('refreshInterval');
@@ -151,43 +67,101 @@ import './popup.css';
 
   // 마스터 ON/OFF 버튼 상태 저장 및 UI 처리
   function setupMasterToggle() {
-    const btn = document.getElementById('masterToggleBtn');
-    // 저장된 상태 불러오기
+    const masterBtn = document.getElementById('masterToggleBtn');
+    const statusTextElement = document.getElementById('statusText');
+    const loadingSpinnerElement = document.getElementById('loadingSpinner');
+
+    // Function to update all UI elements related to master state
+    function updateMasterUI(isOn) {
+      masterBtn.textContent = isOn ? 'ON' : 'OFF';
+      masterBtn.classList.toggle('off', !isOn);
+
+      if (isOn) {
+        statusTextElement.textContent = 'Status: Active';
+        loadingSpinnerElement.style.display = 'block';
+      } else {
+        statusTextElement.textContent = 'Status: Disabled';
+        loadingSpinnerElement.style.display = 'none';
+      }
+    }
+
+    // 저장된 상태 불러오기 및 초기 UI 설정
     chrome.storage.sync.get(['masterOn'], result => {
       const isOn = result.masterOn === true; // 기본값 false (OFF)
-      updateMasterBtn(isOn);
+      updateMasterUI(isOn);
     });
 
-    btn.addEventListener('click', () => {
-      const isOn = btn.classList.toggle('off') ? false : true;
-      updateMasterBtn(isOn);
-      chrome.storage.sync.set({ masterOn: isOn }, () => {
+    masterBtn.addEventListener('click', () => {
+      // 현재 UI 상태(버튼의 'off' 클래스 유무)를 기반으로 다음 상태 결정
+      const currentIsOn = !masterBtn.classList.contains('off');
+      const newIsOn = !currentIsOn;
+
+      updateMasterUI(newIsOn); // UI 즉시 업데이트
+
+      chrome.storage.sync.set({ masterOn: newIsOn }, () => {
         // contentScript에 마스터 상태 전달
         chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
           if (tabs[0]?.id) {
-            // background.js를 통해 contentScript.js에 메시지 전달
             chrome.runtime.sendMessage({
               type: 'MASTER_TOGGLE_BG',
               payload: {
                 tabId: tabs[0].id,
-                isOn: isOn,
+                isOn: newIsOn,
               },
             });
           }
         });
       });
     });
+  }
 
-    function updateMasterBtn(isOn) {
-      btn.textContent = isOn ? 'ON' : 'OFF';
-      btn.classList.toggle('off', !isOn);
-    }
+  // 클릭 간 대기 시간 설정
+  function setupClickDelay() {
+    const input = document.getElementById('clickDelay');
+    const applyBtn = document.getElementById('applyClickDelayBtn');
+
+    // 저장된 값 불러오기
+    chrome.storage.sync.get(['clickDelayMs'], result => {
+      if (typeof result.clickDelayMs === 'number') {
+        input.value = result.clickDelayMs;
+      }
+    });
+
+    // 값 변경 시 즉시 저장 (input 이벤트 사용)
+    input.addEventListener('input', () => {
+      let value = parseInt(input.value, 10);
+      if (isNaN(value) || value < 0) value = 0;
+      if (value > 10000) value = 10000;
+      // input.value = value; // 사용자가 입력 중일 때는 값을 강제로 바꾸지 않을 수 있음. 적용 시점에 최종 검증.
+    });
+    
+    applyBtn.addEventListener('click', () => {
+      let value = parseInt(input.value, 10);
+      if (isNaN(value) || value < 0) value = 0;
+      if (value > 10000) value = 10000;
+      input.value = value; // 최종 검증된 값으로 input 업데이트
+
+      chrome.storage.sync.set({ clickDelayMs: value }, () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+          if (tabs[0]?.id) {
+            chrome.runtime.sendMessage({
+              type: 'SET_CLICK_DELAY_BG',
+              payload: {
+                tabId: tabs[0].id,
+                delay: value,
+              },
+            });
+          }
+        });
+      });
+    });
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     //restoreCounter();
     setupMasterToggle();
     setupRefreshInterval();
+    setupClickDelay(); // 새 함수 호출 추가
     showCurrentUrl();
   });
 

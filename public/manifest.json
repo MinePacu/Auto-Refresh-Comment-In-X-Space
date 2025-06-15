@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Auto Refresh In X Space",
+  "name": "Auto Refresh Comment In X Space",
   "$schema": "https://json.schemastore.org/chrome-manifest.json",
   "version": "0.1.0",
   "description": "My Chrome Extension",
@@ -14,7 +14,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Auto Refresh In X Space",
+    "default_title": "Auto Refresh Comment In X Space",
     "default_popup": "popup.html"
   },
   "permissions": [
