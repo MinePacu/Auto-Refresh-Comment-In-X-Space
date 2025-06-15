@@ -141,11 +141,6 @@ code {
     text-align: left;
 }
 
-.settings-container { 
-    /* margin-top: 10px; feature-container 공통 스타일로 처리 */
-}
-
-
 .setting-group {
   margin-bottom: 15px; 
 }

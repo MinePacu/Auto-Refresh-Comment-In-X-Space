@@ -343,11 +343,8 @@ async function performRecurringSortClick() {
 async function mainFeatureLogic() {
   if (!masterOn) {
     console.log('기능 실행 안 함: Master OFF.');
-    setOperationalState(CS_STATE_IDLE); // Ensure state is IDLE if master is off
     return;
   }
-
-  setOperationalState(CS_STATE_PAGE_VALIDATION); // 사이트 판단 시작
 
   if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
     if (window.location.pathname.includes('status')) {
@@ -355,10 +352,8 @@ async function mainFeatureLogic() {
       // PAGE_VALIDATION 상태는 여기서 유효함
       waitForTweetsAndReplies(async () => {
         if (!masterOn) {
-          setOperationalState(CS_STATE_IDLE);
           return;
         }
-        setOperationalState(CS_STATE_INITIALIZING); // 스크롤 및 초기 설정 시작
         console.log('답글 로드 완료. 스크롤 및 버튼 설정 시작...');
         
         // 500픽셀 한 번 스크롤
