@@ -1,4 +1,4 @@
-# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Refresh Comment In X Space
+# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Comment Refresh In X Space
 
 마스터 토글을 켰을 때, X (전 트위터)에서 스페이스에 대한 상세 게시글 창에 들어가있다면 답글들을 최신 순으로 자동 정렬합니다.
 
