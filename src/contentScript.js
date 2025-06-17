@@ -13,10 +13,15 @@
 
 /**
  * 현재 페이지에서 보고 있는 트위터 유저가 스페이스 중인지 확인하는 함수
- * @returns {boolean}
+ * 스페이스 참여 상태를 다양한 방법으로 감지합니다:
+ * 1. 버튼 텍스트 확인 ("참여했습니다", "스페이스 청취 중" 등)
+ * 2. 스페이스 관련 SVG 배지 확인
+ * 3. 오디오 플레이어 컨트롤 확인
+ * 4. aria-label 속성을 통한 참여 상태 확인
+ * @returns {boolean} 스페이스를 청취 중이면 true, 아니면 false
  */
 function isUserInSpace() {
-  // "스페이스에 참여하기", "Join this Space", "스페이스 청취 중", "Listening to this Space", "녹음 재생" 버튼이 있는지 확인
+  // "스페이스에 참여하기", "Join this Space", "스페이스 청취 중", "Listening to this Space", "참여했습니다" 버튼이 있는지 확인
   const joinSpaceButton = Array.from(document.querySelectorAll('span, div, button'))
     .some(el => {
       const text = el.textContent?.trim();
@@ -24,13 +29,15 @@ function isUserInSpace() {
         text === '스페이스에 참여하기' ||
         text === 'Join this Space' ||
         text === '스페이스 청취 중' ||
-        text === 'Listening to this Space'
+        text === 'Listening to this Space' ||
+        text === '참여했습니다' ||           // 스페이스 참여 완료 상태(한국어)
+        text === 'Joined' ||               // 스페이스 참여 완료 상태(영어)
+        text === 'You joined this Space'   // 스페이스 참여 완료 상태(영어 전체)
         //text === '녹음 재생' ||         // 녹음 재생 버튼(한국어)
         //text === 'Play Recording'      // 녹음 재생 버튼(영어)
       );
     });
-
-  // 프로필 상단에 스페이스 관련 배지가 있는지 확인 (예시)
+  // 프로필 상단에 스페이스 관련 배지가 있는지 확인
   const spaceBadge = document.querySelector('svg[aria-label="Spaces"]');
 
   // 스페이스 청취 중임을 나타내는 배지나 텍스트가 있는지 추가 확인
@@ -39,11 +46,44 @@ function isUserInSpace() {
       const text = el.textContent?.trim();
       return (
         text === '스페이스 청취 중' ||
-        text === 'Listening to this Space'
+        text === 'Listening to this Space' ||
+        text === '참여했습니다' ||           // 스페이스 참여 완료 상태(한국어)
+        text === 'Joined' ||               // 스페이스 참여 완료 상태(영어)
+        text === 'You joined this Space'   // 스페이스 참여 완료 상태(영어 전체)
       );
     });
 
-  return joinSpaceButton || !!spaceBadge || listeningBadge;
+  // 스페이스 오디오 플레이어나 컨트롤이 있는지 확인 (추가 검증)
+  const audioControls = document.querySelector('[data-testid="SpacePlayer"]') || 
+                       document.querySelector('[aria-label*="Space"]') ||
+                       document.querySelector('[aria-label*="스페이스"]');
+  // 스페이스 참여 상태를 나타내는 더 구체적인 UI 요소 확인
+  const spaceParticipantIndicator = Array.from(document.querySelectorAll('*'))
+    .some(el => {
+      const ariaLabel = el.getAttribute('aria-label');
+      const text = el.textContent?.trim();
+      return (
+        ariaLabel?.includes('참여') ||
+        ariaLabel?.includes('joined') ||
+        ariaLabel?.includes('listening') ||
+        text?.includes('참여 중') ||
+        text?.includes('청취 중')
+      );
+    });
+
+  // 디버깅을 위한 감지 결과 로그 (마스터가 ON일 때만)
+  if (masterOn) {
+    console.log('스페이스 청취 상태 감지 결과:', {
+      joinSpaceButton,
+      spaceBadge: !!spaceBadge,
+      listeningBadge,
+      audioControls: !!audioControls,
+      spaceParticipantIndicator,
+      finalResult: joinSpaceButton || !!spaceBadge || listeningBadge || !!audioControls || spaceParticipantIndicator
+    });
+  }
+
+  return joinSpaceButton || !!spaceBadge || listeningBadge || !!audioControls || spaceParticipantIndicator;
 }
 
 // 트위터의 게시글 및 답글이 모두 로드된 후 스크롤을 실행하는 함수
