@@ -14,25 +14,39 @@
 /**
  * 현재 페이지에서 보고 있는 트위터 유저가 스페이스 중인지 확인하는 함수
  * 스페이스 참여 상태를 다양한 방법으로 감지합니다:
- * 1. 버튼 텍스트 확인 ("참여했습니다", "스페이스 청취 중" 등)
- * 2. 스페이스 관련 SVG 배지 확인
- * 3. 오디오 플레이어 컨트롤 확인
- * 4. aria-label 속성을 통한 참여 상태 확인
+ * 1. "생방송으로 듣기" 버튼 확인 (이 경우 청취 대기 상태로 판단)
+ * 2. 버튼 텍스트 확인 ("참여했습니다", "스페이스 청취 중" 등)
+ * 3. 스페이스 관련 SVG 배지 확인
+ * 4. 오디오 플레이어 컨트롤 확인
+ * 5. aria-label 속성을 통한 참여 상태 확인
+ * 6. aria-label에 "스페이스 참여하기" 문자열 포함 확인
  * @returns {boolean} 스페이스를 청취 중이면 true, 아니면 false
  */
 function isUserInSpace() {
+  // "생방송으로 듣기" 버튼이 있으면 아직 스페이스를 청취하지 않는 상태로 판단
+  const liveListenButton = Array.from(document.querySelectorAll('span, div, button'))
+    .some(el => {
+      const text = el.textContent?.trim();
+      return (
+        text === '생방송으로 듣기' ||
+        text === 'Listen live' ||
+        text === 'Listen Live'
+      );
+    });
+  
+  // "생방송으로 듣기" 버튼이 있으면 청취 대기 상태로 간주
+  if (liveListenButton) {
+    console.log('생방송으로 듣기 버튼 감지됨 - 청취 대기 상태');
+    return false;
+  }
+
   // "스페이스에 참여하기", "Join this Space", "스페이스 청취 중", "Listening to this Space", "참여했습니다" 버튼이 있는지 확인
   const joinSpaceButton = Array.from(document.querySelectorAll('span, div, button'))
     .some(el => {
       const text = el.textContent?.trim();
       return (
         text === '스페이스에 참여하기' ||
-        text === 'Join this Space' ||
-        text === '스페이스 청취 중' ||
-        text === 'Listening to this Space' ||
-        text === '참여했습니다' ||           // 스페이스 참여 완료 상태(한국어)
-        text === 'Joined' ||               // 스페이스 참여 완료 상태(영어)
-        text === 'You joined this Space'   // 스페이스 참여 완료 상태(영어 전체)
+        text === 'Join this Space'
         //text === '녹음 재생' ||         // 녹음 재생 버튼(한국어)
         //text === 'Play Recording'      // 녹음 재생 버튼(영어)
       );
@@ -52,11 +66,17 @@ function isUserInSpace() {
         text === 'You joined this Space'   // 스페이스 참여 완료 상태(영어 전체)
       );
     });
-
   // 스페이스 오디오 플레이어나 컨트롤이 있는지 확인 (추가 검증)
   const audioControls = document.querySelector('[data-testid="SpacePlayer"]') || 
                        document.querySelector('[aria-label*="Space"]') ||
                        document.querySelector('[aria-label*="스페이스"]');
+  
+  // aria-label에 "스페이스 참여하기" 문자열을 포함하는 요소 확인 (새로 추가)
+  const spaceJoinButtonByAria = Array.from(document.querySelectorAll('*'))
+    .some(el => {
+      const ariaLabel = el.getAttribute('aria-label');
+      return ariaLabel?.includes('스페이스 참여하기');
+    });
   // 스페이스 참여 상태를 나타내는 더 구체적인 UI 요소 확인
   const spaceParticipantIndicator = Array.from(document.querySelectorAll('*'))
     .some(el => {
@@ -70,28 +90,43 @@ function isUserInSpace() {
         text?.includes('청취 중')
       );
     });
-
-  // 디버깅을 위한 감지 결과 로그 (마스터가 ON일 때만)
+  
+  // 기본 스페이스 감지 정보는 항상 로그 출력 (디버깅 개선)
+  const finalResult = joinSpaceButton || !!spaceBadge || listeningBadge || !!audioControls || spaceJoinButtonByAria || spaceParticipantIndicator;
+  console.log('스페이스 청취 감지:', {
+    result: finalResult,
+    liveListenButton: liveListenButton,
+    masterOn: masterOn
+  });
+  
+  // 디버깅을 위한 상세 감지 결과 로그 (마스터가 ON일 때만)
   if (masterOn) {
-    console.log('스페이스 청취 상태 감지 결과:', {
+    console.log('스페이스 청취 상태 상세 감지 결과:', {
+      liveListenButton,
       joinSpaceButton,
       spaceBadge: !!spaceBadge,
       listeningBadge,
       audioControls: !!audioControls,
+      spaceJoinButtonByAria,
       spaceParticipantIndicator,
-      finalResult: joinSpaceButton || !!spaceBadge || listeningBadge || !!audioControls || spaceParticipantIndicator
+      finalResult
     });
   }
 
-  return joinSpaceButton || !!spaceBadge || listeningBadge || !!audioControls || spaceParticipantIndicator;
+  return finalResult;
 }
 
 // 트위터의 게시글 및 답글이 모두 로드된 후 스크롤을 실행하는 함수
 function waitForTweetsAndReplies(callback, timeout = 10000) {
   const start = Date.now();
   const checkInterval = 500;
-
   function check() {
+    // 마스터가 OFF면 콜백 실행하지 않고 중단
+    if (!masterOn) {
+      console.log('답글 로드 대기 중 Master OFF. 콜백 실행 중단.');
+      return;
+    }
+    
     // 트위터의 게시글(트윗)과 답글이 충분히 로드되었는지 확인
     // 트윗 컨테이너(예: [data-testid="cellInnerDiv"])가 일정 개수 이상 있는지로 판단
     const tweetElements = document.querySelectorAll('[data-testid="cellInnerDiv"]');
@@ -100,8 +135,10 @@ function waitForTweetsAndReplies(callback, timeout = 10000) {
       return;
     }
     if (Date.now() - start > timeout) {
-      // 타임아웃 시에도 콜백 실행
-      callback();
+      // 타임아웃 시에도 콜백 실행 (마스터 상태 재확인 후)
+      if (masterOn) {
+        callback();
+      }
       return;
     }
     setTimeout(check, checkInterval);
@@ -167,16 +204,21 @@ function getCurrentPageStatus() {
                       pathParts[2] && pathParts[2].length > 0; // 트윗 ID가 실제로 존재하는지 확인
     const isInSpace = isUserInSpace();
   
+  // 기본 페이지 정보는 항상 출력 (디버깅 개선)
+  console.log('페이지 상태 확인:', {
+    hostname: window.location.hostname,
+    pathname: window.location.pathname,
+    isTwitterSite,
+    isStatusPage,
+    isInSpace,
+    masterOn
+  });
+  
   // 마스터가 ON일 때만 상세 로그 출력 (로그 스팸 방지)
   if (masterOn) {
-    console.log('Page status check:', {
-      hostname: window.location.hostname,
-      pathname: window.location.pathname,
+    console.log('상세 페이지 상태:', {
       pathParts: pathParts,
       href: window.location.href,
-      isTwitterSite,
-      isStatusPage,
-      isInSpace,
       statusPageCheck: {
         includesStatus: window.location.pathname.includes('/status/'),
         pathPartsLength: pathParts.length,
@@ -364,9 +406,11 @@ chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendRespons
       }
       
       sendResponse(pageStatus);
-      return true; // 동기 응답임을 명시
-    } else if (msg.type === 'MASTER_TOGGLE_CS') {
+      return true; // 동기 응답임을 명시    } else if (msg.type === 'MASTER_TOGGLE_CS') {
+      const previousMasterState = masterOn;
       masterOn = msg.isOn;
+      
+      console.log(`마스터 상태 변경: ${previousMasterState} -> ${masterOn}`);
       
       if (!masterOn) {
         stopContentScriptFeatures();
@@ -375,25 +419,29 @@ chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendRespons
         console.log('Content script features stopped by master toggle.');
         sendResponse({ status: 'Content script features stopped.' });
       } else {
+        console.log('마스터 ON으로 설정됨. 기능 활성화 시작...');
+        
         // 마스터 ON 시 URL 변경 감지 시작
         startURLChangeDetection();
         
-        // 현재 페이지 상태 확인
+        // 현재 페이지 상태 확인 (강제로 로그 출력)
+        console.log('현재 페이지 상태 확인 중...');
         const pageStatus = getCurrentPageStatus();
         console.log('마스터 ON 요청 - 현재 페이지 상태:', pageStatus);
         
         if (pageStatus.status === 'READY') {
           // 모든 조건이 충족된 경우에만 기능 시작
+          console.log('모든 조건 충족됨! 즉시 기능을 시작합니다.');
           startContentScriptFeatures();
           console.log('Content script features (re)started by master toggle - 모든 조건 충족됨.');
           sendResponse({ status: 'Content script features (re)started.', pageStatus: pageStatus });
         } else {
           // 조건이 충족되지 않아도 마스터 상태는 ON으로 유지하고, 조건 확인 시작
-          console.log('마스터 ON 상태로 설정됨. 조건 충족 대기 중:', pageStatus.message);
+          console.log('조건이 아직 충족되지 않음. 조건 충족 대기 시작:', pageStatus.message);
           startConditionChecking(); // 조건 확인 시작
           sendResponse({ status: pageStatus.message, pageStatus: pageStatus });
         }
-      }      return true; // 동기 응답임을 명시
+      }return true; // 동기 응답임을 명시
     } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
       if (typeof msg.interval === 'number') {
         currentRefreshInterval = msg.interval; // 1. 로컬 변수 업데이트
@@ -499,6 +547,11 @@ function waitForElement(xpath, description, timeout = 10000) {
  */
 // initialSetupAndClickSortByLatest 함수 수정 (sortByLatestButtonElement 저장 부분 명확히)
 async function initialSetupAndClickSortByLatest() {
+  if (!masterOn) {
+    console.log('초기 설정 중단: Master OFF.');
+    return false;
+  }
+  
   console.log("최초 설정 시작: '답글 설정' 버튼 및 '최신순 정렬' 버튼 찾기 및 클릭.");
   replySettingsButtonElement = null; // 이전 참조 초기화
   sortByLatestButtonElement = null;  // 이전 참조 초기화
@@ -508,6 +561,12 @@ async function initialSetupAndClickSortByLatest() {
     console.warn("최초 설정 실패: '답글 설정' 버튼을 찾을 수 없습니다.");
     return false;
   }
+  
+  if (!masterOn) {
+    console.log('답글 설정 버튼 찾은 후 Master OFF. 중단.');
+    return false;
+  }
+  
   replySettingsButtonElement = replySettingsBtnFound;
   console.log("'답글 설정' 버튼 찾음 및 참조 저장:", replySettingsButtonElement);
 
@@ -520,12 +579,23 @@ async function initialSetupAndClickSortByLatest() {
     return false;
   }
 
+  if (!masterOn) {
+    console.log('답글 설정 버튼 클릭 후 Master OFF. 중단.');
+    return false;
+  }
+
   console.log("'답글 설정 팝업/모달' 대기 중...");
   const modalElement = await waitForElement(MODAL_XPATH, "답글 설정 팝업/모달", 7000);
   if (!modalElement) {
     console.warn("최초 설정 실패: '답글 설정 팝업/모달'이 나타나지 않음.");
     return false;
   }
+  
+  if (!masterOn) {
+    console.log('모달 확인 후 Master OFF. 중단.');
+    return false;
+  }
+  
   console.log("'답글 설정 팝업/모달' 나타남.");
 
   console.log("'최신순 정렬 버튼' 대기 중...");
@@ -534,6 +604,12 @@ async function initialSetupAndClickSortByLatest() {
     console.warn("최초 설정 실패: '최신순 정렬 버튼'을 모달 내에서 찾지 못함.");
     return false;
   }
+  
+  if (!masterOn) {
+    console.log('최신순 정렬 버튼 찾은 후 Master OFF. 중단.');
+    return false;
+  }
+  
   // sortByLatestButtonElement = sortButtonFound; // 반복 시 매번 찾으므로, 여기서의 저장은 선택적
   console.log("'최신순 정렬 버튼' 찾음:", sortButtonFound);
 
@@ -556,8 +632,10 @@ async function initialSetupAndClickSortByLatest() {
 async function performRecurringSortClick() {
   if (!masterOn) {
     console.log('반복 정렬 중지: Master OFF.');
-    if (refreshIntervalId) clearInterval(refreshIntervalId);
-    refreshIntervalId = null;
+    if (refreshIntervalId) {
+      clearInterval(refreshIntervalId);
+      refreshIntervalId = null;
+    }
     return;
   }
 
@@ -634,17 +712,28 @@ async function performRecurringSortClick() {
  * 주 기능 로직: 스크롤, 초기 버튼 설정 및 반복 클릭 인터벌 시작
  */
 async function mainFeatureLogic() {
+  console.log('메인 기능 로직 시작 - 마스터 상태:', masterOn);
+  
   if (!masterOn) {
     console.log('기능 실행 안 함: Master OFF.');
     return;
   }
 
+  console.log('스페이스 청취 상태 확인 중...');
+  const spaceStatus = isUserInSpace();
+  console.log('스페이스 청취 상태:', spaceStatus);
+  
   // 스페이스 청취 중인지 확인
-  if (!isUserInSpace()) {
+  if (!spaceStatus) {
     console.log('스페이스를 청취 중이 아닙니다. 자동 정렬 기능 비활성.');
     stopContentScriptFeatures();
     return;
   }
+
+  console.log('현재 위치 확인:', {
+    hostname: window.location.hostname,
+    pathname: window.location.pathname
+  });
 
   if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
     if (window.location.pathname.includes('status')) {
@@ -652,6 +741,7 @@ async function mainFeatureLogic() {
       // PAGE_VALIDATION 상태는 여기서 유효함
       waitForTweetsAndReplies(async () => {
         if (!masterOn) {
+          console.log('답글 로드 대기 중 Master OFF. 중단.');
           return;
         }
         
@@ -674,20 +764,20 @@ async function mainFeatureLogic() {
         window.scrollTo(0, 0);
         console.log('맨 위로 스크롤 완료.');
 
-        if (masterOn) {
-          const initialSetupSuccess = await initialSetupAndClickSortByLatest();
-          if (initialSetupSuccess) {
-            console.log("최초 버튼 설정 및 순차 클릭 성공.");
-          } else {
-            console.warn("최초 버튼 설정 실패. 반복 메커니즘이 재시도할 것입니다.");
-          }
-
-          if (masterOn) {
-            if (refreshIntervalId) clearInterval(refreshIntervalId);
-            refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000);
-            console.log(`순차적 버튼 클릭 반복 인터벌 시작 (주기: ${currentRefreshInterval}초)`);
-          }
+        if (!masterOn) { console.log('버튼 설정 전 Master OFF. 중단.'); return; }
+        
+        const initialSetupSuccess = await initialSetupAndClickSortByLatest();
+        if (initialSetupSuccess) {
+          console.log("최초 버튼 설정 및 순차 클릭 성공.");
+        } else {
+          console.warn("최초 버튼 설정 실패. 반복 메커니즘이 재시도할 것입니다.");
         }
+
+        if (!masterOn) { console.log('인터벌 시작 전 Master OFF. 중단.'); return; }
+        
+        if (refreshIntervalId) clearInterval(refreshIntervalId);
+        refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000);
+        console.log(`순차적 버튼 클릭 반복 인터벌 시작 (주기: ${currentRefreshInterval}초)`);
       });
     } else {
       console.log('트윗 상세 페이지 아님. 자동 정렬 기능 비활성.');
@@ -704,13 +794,22 @@ async function mainFeatureLogic() {
  */
 function startContentScriptFeatures() {
   console.log('콘텐츠 스크립트 기능 시작 중...');
+  console.log('현재 마스터 상태:', masterOn);
+  
   if (refreshIntervalId) {
+    console.log('기존 인터벌 정리 중...');
     clearInterval(refreshIntervalId);
     refreshIntervalId = null;
   }
+  
+  console.log('조건 확인 인터벌 중지...');
   stopConditionChecking(); // 기능이 시작되므로 조건 확인 중지
+  
+  console.log('버튼 참조 초기화...');
   replySettingsButtonElement = null; // 시작 시 참조 초기화
   sortByLatestButtonElement = null;  // 시작 시 참조 초기화
+  
+  console.log('메인 기능 로직 실행 시작...');
   mainFeatureLogic();
 }
 
@@ -725,6 +824,7 @@ function stopContentScriptFeatures() {
     console.log('순차적 버튼 클릭 반복 인터벌 중지됨.');
   }
   stopConditionChecking(); // 조건 확인도 중지
+  stopURLChangeDetection(); // URL 변경 감지도 중지
   replySettingsButtonElement = null;
   sortByLatestButtonElement = null;
 }
