@@ -57,14 +57,6 @@ import './popup.css';
     });
   }
 
-  // 현재 탭의 URL 표시
-  function showCurrentUrl() {
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      const tab = tabs[0];
-      document.getElementById('currentUrl').textContent = tab?.url || '-';
-    });
-  }
-
   // 마스터 ON/OFF 버튼 상태 저장 및 UI 처리
   function setupMasterToggle() {
     const masterBtn = document.getElementById('masterToggleBtn');
@@ -157,12 +149,52 @@ import './popup.css';
     });
   }
 
+  // 테마 적용 함수
+  function applyTheme(theme) {
+    const docElement = document.documentElement;
+    if (theme === 'system') {
+      docElement.removeAttribute('data-theme');
+      // CSS media query (prefers-color-scheme) will handle this
+    } else {
+      docElement.setAttribute('data-theme', theme);
+    }
+  }
+
+  // 다크 모드 설정
+  function setupDarkModeToggle() {
+    const themeSelector = document.getElementById('themeSelector');
+    
+    // 저장된 테마 불러오기 및 적용
+    chrome.storage.sync.get(['theme'], result => {
+      const currentTheme = result.theme || 'system'; // 기본값 'system'
+      themeSelector.value = currentTheme;
+      applyTheme(currentTheme);
+    });
+
+    themeSelector.addEventListener('change', () => {
+      const selectedTheme = themeSelector.value;
+      chrome.storage.sync.set({ theme: selectedTheme }, () => {
+        applyTheme(selectedTheme);
+      });
+    });
+
+    // 시스템 테마 변경 감지 (선택 사항: 사용자가 '시스템 설정'을 선택했을 때만 활성화)
+    // 이 부분은 팝업이 열려있을 때만 동작하며, 팝업이 닫히면 리스너가 사라집니다.
+    // 지속적인 시스템 테마 감지를 원한다면 background script에서의 처리가 필요할 수 있습니다.
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      if (themeSelector.value === 'system') {
+        applyTheme('system'); // Re-apply to trigger CSS media query evaluation
+      }
+    });
+  }
+
+
   document.addEventListener('DOMContentLoaded', () => {
     //restoreCounter();
     setupMasterToggle();
     setupRefreshInterval();
     setupClickDelay(); // 새 함수 호출 추가
-    showCurrentUrl();
+    setupDarkModeToggle(); // 다크 모드 설정 함수 호출
   });
 
   // Communicate with background file by sending a message

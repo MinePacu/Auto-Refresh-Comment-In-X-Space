@@ -1,21 +1,128 @@
-# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Comment Refresh In X Space
+# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Refresh Comment In X Space
 
-마스터 토글을 켰을 때, X (전 트위터)에서 스페이스에 대한 상세 게시글 창에 들어가있다면 답글들을 최신 순으로 자동 정렬합니다.
+X (구 트위터) 스페이스 댓글을 자동으로 최신순으로 정렬해주는 Chrome 확장 프로그램입니다.
 
-## 기능
+## 📋 주요 기능
 
-- 일정 주기마다 답글들을 자동으로 최신 순으로 정렬
-- 컴퓨터 성능에 따라 사용자가 수동으로 새로고침 주기(단위 : 초) 및 클릭 간 대기시간(단위 : ms) 설정 가능
+### 🔄 자동 댓글 정렬
+- X 스페이스의 댓글을 지정된 주기로 자동 최신순 정렬
+- 마스터 ON/OFF 토글로 기능 활성화/비활성화 제어
+- 실시간 상태 표시 및 로딩 스피너
 
-## 설치
+### ⚙️ 세부 설정
+- **새로고침 주기**: 1초~3600초(1시간) 범위에서 설정 가능 (기본값: 10초)
+- **클릭 간 대기시간**: 0ms~10000ms 범위에서 설정 가능 (기본값: 700ms)
+- **테마 설정**: 라이트/다크/시스템 설정 선택 가능
 
-[**Chrome** extension]()
+### 🎯 스마트 감지
+- X 스페이스 페이지 자동 감지
+- 스페이스 청취 상태 자동 인식
+- 페이지 이동 시 자동 기능 중지
 
-## Contribution
+## 🚀 설치 방법
 
-Suggestions and pull requests are welcomed!.
+### Chrome 웹스토어에서 설치 (권장)
+[**Chrome Extension**](링크_추가_예정)
+
+### 개발자 모드로 설치
+1. 이 저장소를 다운로드하거나 클론합니다
+2. `npm install`로 의존성을 설치합니다
+3. `npm run build`로 확장 프로그램을 빌드합니다
+4. Chrome에서 `chrome://extensions` 페이지를 엽니다
+5. 개발자 모드를 활성화합니다
+6. "압축해제된 확장 프로그램을 로드합니다"를 클릭합니다
+7. `build` 폴더를 선택합니다
+
+## 📖 사용법
+
+### 1. 기본 사용
+1. X(트위터)에서 스페이스 상세 페이지로 이동합니다
+2. 확장 프로그램 아이콘을 클릭하여 팝업을 엽니다
+3. **마스터 버튼**을 `ON`으로 설정합니다
+4. 댓글이 자동으로 최신순으로 정렬됩니다
+
+### 2. 설정 조정
+- **새로고침 주기**: 댓글 정렬 빈도를 조정합니다
+  - 값 입력 후 "적용" 버튼 클릭
+  - 네트워크 상황에 따라 적절히 조정하세요
+- **클릭 간 대기시간**: 버튼 클릭 사이의 지연시간을 조정합니다
+  - 값 입력 후 "적용" 버튼 클릭
+  - 컴퓨터 성능에 따라 조정하세요
+
+### 3. 상태 확인
+- **상태: 활성화됨** + 로딩 스피너: 정상 작동 중
+- **상태: 비활성화됨**: 기능 중지 상태
+
+## 🛠️ 개발
+
+### 개발 환경 설정
+```bash
+# 의존성 설치
+npm install
+
+# 개발 모드 (파일 변경 감지)
+npm run watch
+
+# 프로덕션 빌드
+npm run build
+```
+
+### 프로젝트 구조
+```
+├── src/
+│   ├── popup.js          # 팝업 UI 로직
+│   ├── popup.css         # 팝업 스타일
+│   ├── background.js     # 백그라운드 스크립트
+│   └── contentScript.js  # 콘텐츠 스크립트
+├── public/
+│   ├── manifest.json     # 확장 프로그램 설정
+│   ├── popup.html        # 팝업 HTML
+│   └── icons/            # 아이콘 파일들
+├── config/               # Webpack 설정
+└── build/                # 빌드된 파일들
+```
+
+### 주요 기술 스택
+- **JavaScript (ES6+)**: 메인 로직
+- **Chrome Extension API**: 확장 프로그램 기능
+- **Webpack**: 모듈 번들링
+- **CSS Variables**: 테마 지원
+
+## 🔧 설정 옵션
+
+| 설정 | 범위 | 기본값 | 설명 |
+|------|------|--------|------|
+| 마스터 토글 | ON/OFF | OFF | 전체 기능 활성화/비활성화 |
+| 새로고침 주기 | 1-3600초 | 10초 | 댓글 정렬 반복 주기 |
+| 클릭 간 대기시간 | 0-10000ms | 700ms | UI 요소 클릭 사이 지연시간 |
+| 테마 | 라이트/다크/시스템 | 시스템 | 팝업 UI 테마 |
+
+## 🚨 주의사항
+
+- X 스페이스 페이지에서만 작동합니다
+- 네트워크 상황에 따라 설정 조정이 필요할 수 있습니다
+- 과도하게 짧은 새로고침 주기는 성능에 영향을 줄 수 있습니다
+- X의 UI 변경 시 일시적으로 작동하지 않을 수 있습니다
+
+## 🤝 기여하기
+
+버그 리포트, 기능 제안, 풀 리퀘스트를 환영합니다!
+
+1. 이 저장소를 포크합니다
+2. 기능 브랜치를 생성합니다 (`git checkout -b feature/AmazingFeature`)
+3. 변경사항을 커밋합니다 (`git commit -m 'Add some AmazingFeature'`)
+4. 브랜치에 푸시합니다 (`git push origin feature/AmazingFeature`)
+5. 풀 리퀘스트를 생성합니다
+
+## 📄 라이선스
+
+이 프로젝트는 MIT 라이선스 하에 배포됩니다.
+
+## 🙏 크레딧
+
+이 프로젝트는 [Chrome Extension CLI](https://github.com/dutiyesh/chrome-extension-cli)를 기반으로 제작되었습니다.
 
 ---
 
-This project was bootstrapped with [Chrome Extension CLI](https://github.com/dutiyesh/chrome-extension-cli)
+**문제가 발생하시나요?** [Issues](https://github.com/your-repo/issues)에서 문제를 신고해주세요.
 

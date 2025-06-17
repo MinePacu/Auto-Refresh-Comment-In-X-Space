@@ -24,9 +24,9 @@ function isUserInSpace() {
         text === '스페이스에 참여하기' ||
         text === 'Join this Space' ||
         text === '스페이스 청취 중' ||
-        text === 'Listening to this Space' ||
-        text === '녹음 재생' ||         // 녹음 재생 버튼(한국어)
-        text === 'Play Recording'      // 녹음 재생 버튼(영어)
+        text === 'Listening to this Space'
+        //text === '녹음 재생' ||         // 녹음 재생 버튼(한국어)
+        //text === 'Play Recording'      // 녹음 재생 버튼(영어)
       );
     });
 
@@ -112,9 +112,17 @@ chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendRespons
       console.log('Content script features stopped by master toggle.');
       sendResponse({ status: 'Content script features stopped.' });
     } else {
-      startContentScriptFeatures();
-      console.log('Content script features (re)started by master toggle.');
-      sendResponse({ status: 'Content script features (re)started.' });
+      // 마스터 ON 시 스페이스 청취 중인지 확인
+      if (!isUserInSpace()) {
+        console.log('마스터 ON 요청이지만 스페이스를 청취 중이 아닙니다. 기능을 시작하지 않습니다.');
+        masterOn = false; // 로컬 상태를 다시 OFF로 변경
+        chrome.storage.sync.set({ masterOn: false }); // 스토리지에도 반영
+        sendResponse({ status: 'Master ON 요청이지만 스페이스 청취 중이 아님. 기능 시작 안 함.' });
+      } else {
+        startContentScriptFeatures();
+        console.log('Content script features (re)started by master toggle - 스페이스 청취 중 확인됨.');
+        sendResponse({ status: 'Content script features (re)started.' });
+      }
     }
   } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
     if (typeof msg.interval === 'number') {
@@ -275,7 +283,14 @@ async function performRecurringSortClick() {
     return;
   }
 
-  console.log(`반복 정렬 실행 (주기: ${currentRefreshInterval}초)`);
+  // 스페이스 청취 중인지 확인
+  if (!isUserInSpace()) {
+    console.log('반복 정렬 중지: 스페이스를 청취 중이 아닙니다.');
+    stopContentScriptFeatures();
+    return;
+  }
+
+  console.log(`반복 정렬 실행 (주기: ${currentRefreshInterval}초, 스페이스 청취 중 확인됨)`);
 
   const isReplySettingsButtonValid = replySettingsButtonElement && document.body.contains(replySettingsButtonElement);
   // sortByLatestButtonElement는 매번 다시 찾으므로, 여기서는 replySettingsButtonElement만 주로 확인
@@ -346,23 +361,38 @@ async function mainFeatureLogic() {
     return;
   }
 
+  // 스페이스 청취 중인지 확인
+  if (!isUserInSpace()) {
+    console.log('스페이스를 청취 중이 아닙니다. 자동 정렬 기능 비활성.');
+    stopContentScriptFeatures();
+    return;
+  }
+
   if (window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com') {
     if (window.location.pathname.includes('status')) {
-      console.log('트윗 상세 페이지 감지. 답글 로드 대기...');
+      console.log('트윗 상세 페이지 감지 및 스페이스 청취 중 확인됨. 답글 로드 대기...');
       // PAGE_VALIDATION 상태는 여기서 유효함
       waitForTweetsAndReplies(async () => {
         if (!masterOn) {
           return;
         }
-        console.log('답글 로드 완료. 스크롤 및 버튼 설정 시작...');
+        
+        // 스페이스 청취 상태 재확인
+        if (!isUserInSpace()) {
+          console.log('답글 로드 후 스페이스 청취 상태가 아님. 기능 중지.');
+          stopContentScriptFeatures();
+          return;
+        }
+        
+        console.log('답글 로드 완료 및 스페이스 청취 중 재확인됨. 스크롤 및 버튼 설정 시작...');
         
         // 500픽셀 한 번 스크롤
-        if (!masterOn) { console.log('스크롤 전 Master OFF. 중단.'); setOperationalState(CS_STATE_IDLE); return; }
+        if (!masterOn) { console.log('스크롤 전 Master OFF. 중단.'); return; }
         console.log('답글에 대한 설정 버튼을 출력하기 위해 500픽셀 스크롤을 시행합니다.');
         window.scrollBy(0, 500);
         await new Promise(res => setTimeout(res, 300)); // 스크롤 후 DOM 업데이트를 위한 약간의 대기
 
-        if (!masterOn) { console.log('스크롤 후 Master OFF. 중단.'); setOperationalState(CS_STATE_IDLE); return; }
+        if (!masterOn) { console.log('스크롤 후 Master OFF. 중단.'); return; }
         window.scrollTo(0, 0);
         console.log('맨 위로 스크롤 완료.');
 

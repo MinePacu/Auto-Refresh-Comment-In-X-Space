@@ -43,16 +43,26 @@
           <button id="applyClickDelayBtn" class="button" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;">적용</button>
         </div>
       </div>
-    </div>
-    <!-- 현재 URL 표시 (필요하다면 추가) -->
-    <!--
+    </div> <!-- 이 div가 원래 .app의 닫는 태그였습니다. -->
+
     <hr class="divider" />
-    <div class="current-url-container feature-container">
-        <p class="setting-description">Current Page URL:</p>
-        <p id="currentUrl" class="current-url-text">-</p>
+
+    <!-- 다크 모드 설정 컨테이너 -->
+    <div class="feature-container">
+      <div class="setting-group">
+        <h3 class="setting-title">테마 설정</h3>
+        <p class="setting-description">팝업 UI의 테마를 선택합니다.</p>
+        <div class="theme-setting" style="margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+          <label for="themeSelector">테마:</label>
+          <select id="themeSelector" style="flex-grow: 1; margin-left: 8px; padding: 5px;">
+            <option value="light">라이트</option>
+            <option value="dark">다크</option>
+            <option value="system">시스템 설정</option>
+          </select>
+        </div>
+      </div>
     </div>
-    -->
-  </div>
+</div>
 
   <script src="popup.js"></script>
 </body>

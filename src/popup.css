@@ -8,10 +8,52 @@
 }
 /* normalize css ends here */
 
+:root {
+    --body-bg: #fff;
+    --text-color: #222;
+    --button-bg: bisque;
+    --button-text: #222;
+    --button-off-bg: #ddd;
+    --button-off-text: #888;
+    --input-bg: #fff;
+    --input-border: #ccc;
+    --divider-color: #ccc;
+    --code-bg: rgba(254, 237, 185, .3);
+    --setting-title-color: #333;
+    --setting-description-color: #666;
+    --current-url-bg: #f9f9f9;
+    --current-url-border: #eee;
+    --current-url-text: #777;
+    --select-bg: #fff;
+    --select-text: #222;
+    --select-border: #ccc;
+}
+
+[data-theme="dark"] {
+    --body-bg: #2d2d2d;
+    --text-color: #f1f1f1;
+    --button-bg: #555;
+    --button-text: #f1f1f1;
+    --button-off-bg: #444;
+    --button-off-text: #aaa;
+    --input-bg: #333;
+    --input-border: #555;
+    --divider-color: #555;
+    --code-bg: rgba(80, 80, 80, .5);
+    --setting-title-color: #e0e0e0;
+    --setting-description-color: #bbb;
+    --current-url-bg: #3a3a3a;
+    --current-url-border: #505050;
+    --current-url-text: #ccc;
+    --select-bg: #333;
+    --select-text: #f1f1f1;
+    --select-border: #555;
+}
 
 html {
     font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif;
-    color: #222;
+    color: var(--text-color);
+    background-color: var(--body-bg);
 }
 
 body {
@@ -19,6 +61,7 @@ body {
     margin: 0; /* body의 기본 마진 제거 */
     display: flex; /* .app을 body 내에서 유연하게 배치하기 위함 */
     flex-direction: column; /* .app이 수직으로 확장되도록 */
+    background-color: var(--body-bg); /* Apply body background */
 }
 
 .app {
@@ -29,38 +72,43 @@ body {
     align-items: flex-start; 
     justify-content: flex-start; 
     flex-direction: column;
-    text-align: center;
     padding: 15px; 
     overflow-y: auto; /* 세로 스크롤 자동 생성 */
     overflow-x: hidden; /* 가로 스크롤 방지 */
+    /* text-align: center; */ /* Removed to allow left-align for setting groups */
 }
 
 .title {
     font-size: 18px;
     font-weight: 600;
     margin-bottom: 10px;
+    color: var(--text-color);
 }
 
 .subtitle {
     font-size: 12px;
+    color: var(--text-color);
 }
 
 code {
     font-size: 12px;
     font-family: inherit;
-    background-color: rgba(254, 237, 185, .3);
+    background-color: var(--code-bg);
     padding: 2px 4px;
     border-radius: 2px;
+    color: var(--text-color);
 }
 
 .master-container { /* 마스터 버튼 컨테이너 스타일 추가 */
     width: 100%;
     margin-bottom: 10px;
+    text-align: center; /* 마스터 버튼 가운데 정렬 */
 }
 
 .counter-label {
     font-size: 12px;
     margin-bottom: 5px;
+    color: var(--text-color);
 }
 
 .counter {
@@ -78,7 +126,8 @@ code {
     padding: 10px 20px;
     margin-right: 4px;
     margin-left: 4px;
-    background-color: bisque;
+    background-color: var(--button-bg);
+    color: var(--button-text);
     font-size: 16px;
     cursor: pointer;
     border-radius: 4px;
@@ -96,15 +145,15 @@ code {
 }
 
 .button.off {
-    background-color: #ddd;
-    color: #888;
+    background-color: var(--button-off-bg);
+    color: var(--button-off-text);
 }
 
 .divider {
-    margin: 15px auto; 
-    width: 80%; 
-    border: .5px dashed #ccc; 
-    opacity: .5; 
+    margin: 15px auto;
+    width: 80%;
+    border: .5px dashed var(--divider-color);
+    opacity: .5;
 }
 
 .status-indicator-container {
@@ -118,12 +167,13 @@ code {
 
 .status-text {
   font-size: 12px;
-  font-weight: 500; 
+  font-weight: 500;
+  color: var(--text-color);
 }
 
 .loading-spinner {
-  border: 3px solid #f0f0f0; 
-  border-top: 3px solid #0078D4; 
+  border: 3px solid #f0f0f0; /* Light theme spinner base */
+  border-top: 3px solid #0078D4; /* Light theme spinner active */
   border-radius: 50%;
   width: 16px;
   height: 16px;
@@ -133,6 +183,11 @@ code {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+[data-theme="dark"] .loading-spinner {
+  border: 3px solid #555; /* Dark theme spinner base */
+  border-top: 3px solid #77b3e0; /* Dark theme spinner active */
 }
 
 .feature-container {
@@ -149,32 +204,49 @@ code {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 3px;
-  color: #333;
+  color: var(--setting-title-color);
 }
 
 .setting-description {
   font-size: 11px;
-  color: #666;
+  color: var(--setting-description-color);
   margin-bottom: 8px;
 }
 
 .refresh-interval-setting,
-.click-delay-setting {
-    margin-bottom: 10px; 
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between; 
+.click-delay-setting,
+.theme-setting /* Added for theme selector */ {
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .refresh-interval-setting label,
-.click-delay-setting label {
-    margin-right: 8px; 
+.click-delay-setting label,
+.theme-setting label /* Added for theme selector */ {
+    margin-right: 8px;
+    color: var(--text-color);
 }
 
 .refresh-interval-setting input,
 .click-delay-setting input {
-    flex-grow: 1; 
-    margin-right: 8px; 
+    flex-grow: 1;
+    margin-right: 8px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--input-border);
+    padding: 5px;
+}
+
+#themeSelector { /* Style for the theme select dropdown */
+    flex-grow: 1;
+    margin-left: 8px;
+    padding: 5px;
+    background-color: var(--select-bg);
+    color: var(--select-text);
+    border: 1px solid var(--select-border);
+    border-radius: 3px;
 }
 
 
@@ -182,12 +254,12 @@ code {
     width: 100%;
     margin-top: 10px;
 }
-.current-url-text { 
+.current-url-text {
     font-size: 11px;
-    color: #777;
+    color: var(--current-url-text);
     word-break: break-all;
-    background-color: #f9f9f9;
+    background-color: var(--current-url-bg);
     padding: 5px;
     border-radius: 3px;
-    border: 1px solid #eee;
+    border: 1px solid var(--current-url-border);
 }
