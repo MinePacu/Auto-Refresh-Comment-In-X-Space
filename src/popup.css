@@ -105,6 +105,11 @@ code {
     text-align: center; /* 마스터 버튼 가운데 정렬 */
 }
 
+.master-container .status-indicator-container {
+    margin-top: 10px; /* 마스터 버튼과 상태 표시 사이 간격 */
+    margin-bottom: 0; /* 하단 마진 제거 */
+}
+
 .counter-label {
     font-size: 12px;
     margin-bottom: 5px;

@@ -11,17 +11,18 @@
     <div class="master-container">
       <p class="counter-label">마스터 버튼</p>
       <button id="masterToggleBtn" class="button">ON</button>
+      
+      <!-- 실시간 상태 표시를 마스터 버튼 바로 아래로 이동 -->
+      <div class="status-indicator-container">
+        <span id="statusText" class="status-text">상태: 알 수 없음</span>
+        <div id="loadingSpinner" class="loading-spinner" style="display: none;"></div>
+      </div>
     </div>
 
     <hr class="divider" />
 
     <!-- 기능 컨테이너 -->
     <div class="feature-container">
-      <div class="status-indicator-container">
-        <span id="statusText" class="status-text">상태: 알 수 없음</span>
-        <div id="loadingSpinner" class="loading-spinner" style="display: none;"></div>
-      </div>
-    <!-- <div class="divider"></div> 이 divider는 feature-container 내부보다는 app 레벨에 있는 것이 구조적으로 나을 수 있습니다. -->
       <div class="setting-group">
         <h3 class="setting-title">새로고침 주기</h3>
         <p class="setting-description">답글 목록을 얼마나 자주 새로고침할지 설정합니다 (초 단위).</p>
@@ -62,7 +63,7 @@
         </div>
       </div>
     </div>
-</div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

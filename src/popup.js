@@ -57,30 +57,96 @@ import './popup.css';
     });
   }
 
+  // 페이지 상태 확인 함수
+  function checkPageStatus() {
+    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+      if (tabs[0]?.id) {
+        chrome.runtime.sendMessage({
+          type: 'GET_PAGE_STATUS_BG',
+          payload: {
+            tabId: tabs[0].id,
+          },
+        }, response => {
+          // response 체크 개선
+          if (chrome.runtime.lastError) {
+            console.log('Runtime error in checkPageStatus:', chrome.runtime.lastError.message);
+            updateStatusDisplay({ status: 'WAITING_FOR_TWITTER', message: '트위터 접속 대기 중' });
+          } else if (response && typeof response === 'object') {
+            updateStatusDisplay(response);
+          } else {
+            // response가 없거나 잘못된 경우 기본값 사용
+            console.log('No valid response received, using default status');
+            updateStatusDisplay({ status: 'WAITING_FOR_TWITTER', message: '트위터 접속 대기 중' });
+          }
+        });
+      } else {
+        // 탭 정보가 없는 경우
+        updateStatusDisplay({ status: 'WAITING_FOR_TWITTER', message: '트위터 접속 대기 중' });
+      }
+    });
+  }
+
+  // 상태 표시 업데이트 함수
+  function updateStatusDisplay(pageStatus) {
+    const statusTextElement = document.getElementById('statusText');
+    const loadingSpinnerElement = document.getElementById('loadingSpinner');
+    const masterBtn = document.getElementById('masterToggleBtn');
+    const isMasterOn = !masterBtn.classList.contains('off');
+
+    if (!isMasterOn) {
+      // 마스터가 OFF인 경우
+      statusTextElement.textContent = '상태: 비활성화됨';
+      loadingSpinnerElement.style.display = 'none';
+    } else {
+      // 마스터가 ON인 경우, 페이지 상태에 따라 표시
+      switch (pageStatus.status) {
+        case 'WAITING_FOR_TWITTER':
+          statusTextElement.textContent = '트위터 접속 대기 중';
+          loadingSpinnerElement.style.display = 'block';
+          break;
+        case 'WAITING_FOR_STATUS_PAGE':
+          statusTextElement.textContent = '트윗 상세 페이지 대기 중';
+          loadingSpinnerElement.style.display = 'block';
+          break;
+        case 'WAITING_FOR_SPACE':
+          statusTextElement.textContent = '스페이스 청취 대기 중';
+          loadingSpinnerElement.style.display = 'block';
+          break;
+        case 'READY':
+          statusTextElement.textContent = '상태: 활성화됨';
+          loadingSpinnerElement.style.display = 'block';
+          break;
+        default:
+          statusTextElement.textContent = pageStatus.message || '상태 확인 중...';
+          loadingSpinnerElement.style.display = 'block';
+      }
+    }
+  }
+
   // 마스터 ON/OFF 버튼 상태 저장 및 UI 처리
   function setupMasterToggle() {
     const masterBtn = document.getElementById('masterToggleBtn');
     const statusTextElement = document.getElementById('statusText');
     const loadingSpinnerElement = document.getElementById('loadingSpinner');
 
-    // Function to update all UI elements related to master state
-    function updateMasterUI(isOn) {
+    // Function to update master button UI only
+    function updateMasterButtonUI(isOn) {
       masterBtn.textContent = isOn ? 'ON' : 'OFF';
       masterBtn.classList.toggle('off', !isOn);
-
-      if (isOn) {
-        statusTextElement.textContent = '상태: 활성화됨';
-        loadingSpinnerElement.style.display = 'block';
-      } else {
-        statusTextElement.textContent = '상태: 비활성화됨';
-        loadingSpinnerElement.style.display = 'none';
-      }
     }
 
     // 저장된 상태 불러오기 및 초기 UI 설정
     chrome.storage.sync.get(['masterOn'], result => {
       const isOn = result.masterOn === true; // 기본값 false (OFF)
-      updateMasterUI(isOn);
+      updateMasterButtonUI(isOn);
+      
+      // 초기 상태 확인
+      if (isOn) {
+        checkPageStatus();
+      } else {
+        statusTextElement.textContent = '상태: 비활성화됨';
+        loadingSpinnerElement.style.display = 'none';
+      }
     });
 
     masterBtn.addEventListener('click', () => {
@@ -88,7 +154,7 @@ import './popup.css';
       const currentIsOn = !masterBtn.classList.contains('off');
       const newIsOn = !currentIsOn;
 
-      updateMasterUI(newIsOn); // UI 즉시 업데이트
+      updateMasterButtonUI(newIsOn); // 버튼 UI 즉시 업데이트
 
       chrome.storage.sync.set({ masterOn: newIsOn }, () => {
         // contentScript에 마스터 상태 전달
@@ -100,11 +166,70 @@ import './popup.css';
                 tabId: tabs[0].id,
                 isOn: newIsOn,
               },
+            }, response => {
+              // 응답 처리 개선
+              console.log('Master toggle response:', response);
+              
+              // runtime 에러 체크
+              if (chrome.runtime.lastError) {
+                console.log('Runtime error in master toggle:', chrome.runtime.lastError.message);
+                // 에러가 발생한 경우 페이지 상태를 직접 확인
+                if (newIsOn) {
+                  setTimeout(() => checkPageStatus(), 200);
+                } else {
+                  statusTextElement.textContent = '상태: 비활성화됨';
+                  loadingSpinnerElement.style.display = 'none';
+                }
+                return;
+              }
+
+              // response가 유효한 객체인지 확인
+              if (response && typeof response === 'object') {
+                if (response.pageStatus) {
+                  // contentScript로부터 페이지 상태를 받은 경우
+                  updateStatusDisplay(response.pageStatus);
+                } else if (response.error) {
+                  // contentScript 통신 오류가 발생한 경우
+                  console.log('Content script communication error:', response.error);
+                  // 페이지 상태를 직접 확인
+                  if (newIsOn) {
+                    setTimeout(() => checkPageStatus(), 200);
+                  } else {
+                    statusTextElement.textContent = '상태: 비활성화됨';
+                    loadingSpinnerElement.style.display = 'none';
+                  }
+                } else if (newIsOn) {
+                  // ON으로 설정했지만 명확한 응답이 없는 경우 페이지 상태 확인
+                  setTimeout(() => checkPageStatus(), 200);
+                } else {
+                  // OFF로 설정한 경우
+                  statusTextElement.textContent = '상태: 비활성화됨';
+                  loadingSpinnerElement.style.display = 'none';
+                }
+              } else {
+                // response가 없거나 잘못된 경우
+                console.log('Invalid or no response received from master toggle');
+                if (newIsOn) {
+                  setTimeout(() => checkPageStatus(), 200);
+                } else {
+                  statusTextElement.textContent = '상태: 비활성화됨';
+                  loadingSpinnerElement.style.display = 'none';
+                }
+              }
             });
           }
         });
       });
     });
+
+    // 실시간 상태 업데이트를 위한 주기적 확인 (마스터가 ON일 때만)
+    setInterval(() => {
+      const currentIsOn = !masterBtn.classList.contains('off');
+      if (currentIsOn) {
+        checkPageStatus();
+      }
+      // 마스터가 OFF일 때는 상태 확인을 하지 않음 (로그 스팸 방지)
+    }, 1000); // 1초마다 확인 (더 빠른 반응성)
   }
 
   // 클릭 간 대기 시간 설정
@@ -206,7 +331,14 @@ import './popup.css';
       },
     },
     response => {
-      console.log(response.message);
+      // 응답 처리 개선
+      if (chrome.runtime.lastError) {
+        console.log('Runtime error in greetings:', chrome.runtime.lastError.message);
+      } else if (response && response.message) {
+        console.log(response.message);
+      } else {
+        console.log('Greetings sent but no valid response received');
+      }
     }
   );
 })();

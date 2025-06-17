@@ -76,6 +76,7 @@ let replySettingsButtonElement = null; // 답글 설정 버튼 참조 저장
 let sortByLatestButtonElement = null; // 최신순 정렬 버튼 참조 저장
 let refreshIntervalId = null; // setInterval ID 저장
 let currentClickDelayMs = 700; // 클릭 간 대기 시간 기본값
+let conditionCheckIntervalId = null; // 조건 확인 인터벌 ID
 
 // XPath 및 지연 시간 상수 정의
 const REPLY_SETTINGS_BUTTON_XPATH = '//*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[1]/div[1]/div/div/div/div/div/div[3]/div/button[2]';
@@ -88,6 +89,17 @@ function loadSettingsFromStorage() {
   chrome.storage && chrome.storage.sync.get(['masterOn', 'refreshInterval', 'clickDelayMs'], result => {
     if (typeof result.masterOn === 'boolean') {
       masterOn = result.masterOn;
+      
+      // 초기 로드 시 마스터가 ON이면 조건 확인 시작
+      if (masterOn) {
+        console.log('초기 로드: 마스터가 ON 상태이므로 조건 확인을 시작합니다.');
+        const pageStatus = getCurrentPageStatus();
+        if (pageStatus.status === 'READY') {
+          startContentScriptFeatures();
+        } else {
+          startConditionChecking();
+        }
+      }
     }
     if (typeof result.refreshInterval === 'number') {
       currentRefreshInterval = result.refreshInterval;
@@ -97,62 +109,288 @@ function loadSettingsFromStorage() {
       currentClickDelayMs = result.clickDelayMs;
       console.log('Loaded click delay from storage:', currentClickDelayMs);
     }
-    // masterOn의 초기 상태에 따라 startContentScriptFeatures 호출 여부가 결정됨
   });
 }
 
 loadSettingsFromStorage();
 
-// 메시지 수신 로직
-chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'MASTER_TOGGLE_CS') {
-    masterOn = msg.isOn;
-    if (!masterOn) {
-      stopContentScriptFeatures();
-      console.log('Content script features stopped by master toggle.');
-      sendResponse({ status: 'Content script features stopped.' });
-    } else {
-      // 마스터 ON 시 스페이스 청취 중인지 확인
-      if (!isUserInSpace()) {
-        console.log('마스터 ON 요청이지만 스페이스를 청취 중이 아닙니다. 기능을 시작하지 않습니다.');
-        masterOn = false; // 로컬 상태를 다시 OFF로 변경
-        chrome.storage.sync.set({ masterOn: false }); // 스토리지에도 반영
-        sendResponse({ status: 'Master ON 요청이지만 스페이스 청취 중이 아님. 기능 시작 안 함.' });
-      } else {
-        startContentScriptFeatures();
-        console.log('Content script features (re)started by master toggle - 스페이스 청취 중 확인됨.');
-        sendResponse({ status: 'Content script features (re)started.' });
-      }
+// 현재 페이지 상태를 확인하는 함수
+function getCurrentPageStatus() {
+  const isTwitterSite = window.location.hostname === 'twitter.com' || window.location.hostname === 'x.com';
+    // 트윗 상세 페이지 URL 패턴 확인 - 더 정확한 검사
+  // 예: https://x.com/username/status/1234567890
+  // 또는: https://twitter.com/username/status/1234567890
+  const pathParts = window.location.pathname.split('/').filter(part => part.length > 0);
+  const isStatusPage = window.location.pathname.includes('/status/') && 
+                      pathParts.length >= 3 && // ['username', 'status', 'tweetId'] 최소 구조
+                      pathParts[1] === 'status' &&
+                      pathParts[2] && pathParts[2].length > 0; // 트윗 ID가 실제로 존재하는지 확인
+    const isInSpace = isUserInSpace();
+  
+  // 마스터가 ON일 때만 상세 로그 출력 (로그 스팸 방지)
+  if (masterOn) {
+    console.log('Page status check:', {
+      hostname: window.location.hostname,
+      pathname: window.location.pathname,
+      pathParts: pathParts,
+      href: window.location.href,
+      isTwitterSite,
+      isStatusPage,
+      isInSpace,
+      statusPageCheck: {
+        includesStatus: window.location.pathname.includes('/status/'),
+        pathPartsLength: pathParts.length,
+        secondPartIsStatus: pathParts[1] === 'status',
+        thirdPartExists: pathParts[2] && pathParts[2].length > 0
+      },
+      currentStatus: !isTwitterSite ? 'NOT_TWITTER' : !isStatusPage ? 'NOT_STATUS_PAGE' : !isInSpace ? 'NOT_IN_SPACE' : 'READY'
+    });
+  }
+  
+  if (!isTwitterSite) {
+    return { status: 'WAITING_FOR_TWITTER', message: '트위터 접속 대기 중' };  } else if (!isStatusPage) {    // 트위터에는 접속했지만 게시글 상세 페이지가 아닌 경우
+    // 예시 URL들:
+    // - https://x.com (홈)
+    // - https://x.com/home (홈 피드)
+    // - https://x.com/explore (탐색)
+    // - https://x.com/notifications (알림)
+    // - https://x.com/messages (메시지)
+    // - https://x.com/username (프로필)
+    // - https://x.com/settings (설정)
+    // - https://x.com/i/lists (리스트)
+    // - https://x.com/i/bookmarks (북마크)
+    if (masterOn) {
+      console.log('트위터 사이트에는 접속했지만 트윗 상세 페이지가 아님. 현재 경로:', window.location.pathname);
     }
-  } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
-    if (typeof msg.interval === 'number') {
-      currentRefreshInterval = msg.interval; // 1. 로컬 변수 업데이트
-      chrome.storage.sync.set({ refreshInterval: currentRefreshInterval }); // 2. 변경된 값 스토리지에 저장
-      console.log('Refresh interval updated to:', currentRefreshInterval);
-      sendResponse({ status: 'Refresh interval updated.' });
+    return { status: 'WAITING_FOR_STATUS_PAGE', message: '트윗 상세 페이지 대기 중' };
+  } else if (!isInSpace) {
+    // 게시글 상세 페이지에는 있지만 스페이스를 청취하지 않는 경우
+    if (masterOn) {
+      console.log('트윗 상세 페이지에는 있지만 스페이스를 청취하지 않음');
+    }
+    return { status: 'WAITING_FOR_SPACE', message: '스페이스 청취 대기 중' };
+  } else {
+    // 모든 조건이 충족된 경우: 트위터 사이트 + 트윗 상세 페이지 + 스페이스 청취 중
+    if (masterOn) {
+      console.log('모든 조건 충족: 기능 활성화 준비 완료');
+    }
+    return { status: 'READY', message: '상태: 활성화됨' };
+  }
+}
 
-      // 3. 마스터 버튼이 ON이고, 기존 인터벌이 실행 중이었다면 재시작
-      if (masterOn && refreshIntervalId) {
-        console.log('Restarting recurring sort click due to interval change.');
-        clearInterval(refreshIntervalId); // 3a. 기존 인터벌 중지
-        refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000); // 3b. 새 주기로 인터벌 시작
-        console.log(`Recurring sort click interval restarted with new interval: ${currentRefreshInterval}s`);
-      }
-    } else {
-      sendResponse({ status: 'Error: Invalid interval.' });
+// 조건 확인 및 자동 시작 함수
+function checkConditionsAndStart() {
+  if (!masterOn) {
+    // 마스터가 OFF면 조건 확인 중지
+    if (conditionCheckIntervalId) {
+      clearInterval(conditionCheckIntervalId);
+      conditionCheckIntervalId = null;
+      console.log('조건 확인 중지: 마스터 OFF');
     }
-  } else if (msg.type === 'SET_CLICK_DELAY_CS') {
-    if (typeof msg.delay === 'number') {
-      currentClickDelayMs = msg.delay;
-      chrome.storage.sync.set({ clickDelayMs: currentClickDelayMs }); // 스토리지에도 저장 (일관성)
-      console.log('Click delay updated to:', currentClickDelayMs);
-      sendResponse({ status: 'Click delay updated in content script.' });
-      // 이 변경은 performRecurringSortClick 내부의 await new Promise에서 다음 실행 시 자동으로 사용됨
-      // 별도로 인터벌을 재시작할 필요 없음
-    } else {
-      sendResponse({ status: 'Error: Invalid click delay.'});
+    return;
+  }
+
+  const pageStatus = getCurrentPageStatus();
+  
+  if (pageStatus.status === 'READY' && !refreshIntervalId) {
+    // 조건이 충족되고 아직 기능이 시작되지 않은 경우
+    console.log('조건 충족됨! 자동으로 기능을 시작합니다.');
+    stopConditionChecking(); // 조건 확인 중지 (기능이 시작되므로)
+    startContentScriptFeatures();
+  } else if (pageStatus.status !== 'READY' && refreshIntervalId) {
+    // 조건이 충족되지 않고 기능이 실행 중인 경우 중지
+    console.log('조건 미충족으로 기능을 중지합니다:', pageStatus.message);
+    stopContentScriptFeatures();
+    startConditionChecking(); // 다시 조건 확인 시작
+  }
+}
+
+// 조건 확인 인터벌 시작
+function startConditionChecking() {
+  if (conditionCheckIntervalId) {
+    clearInterval(conditionCheckIntervalId);
+  }
+  // 즉시 한 번 확인 실행
+  checkConditionsAndStart();
+  // 그 후 3초마다 확인
+  conditionCheckIntervalId = setInterval(checkConditionsAndStart, 3000);
+  console.log('조건 확인 인터벌 시작 (즉시 확인 후 3초마다)');
+}
+
+// URL 변경 감지를 위한 변수
+let currentURL = window.location.href;
+
+// SPA에서 URL 변경 감지를 위한 history API 오버라이드
+const originalPushState = history.pushState;
+const originalReplaceState = history.replaceState;
+
+// pushState 오버라이드
+history.pushState = function(...args) {
+  originalPushState.apply(history, args);
+  setTimeout(() => {
+    if (masterOn) {
+      console.log('pushState로 인한 URL 변경 감지');
+      detectURLChange();
+    }
+  }, 100); // 약간의 지연을 두어 DOM 업데이트 대기
+};
+
+// replaceState 오버라이드
+history.replaceState = function(...args) {
+  originalReplaceState.apply(history, args);
+  setTimeout(() => {
+    if (masterOn) {
+      console.log('replaceState로 인한 URL 변경 감지');
+      detectURLChange();
+    }
+  }, 100);
+};
+
+// popstate 이벤트 리스너 (뒤로가기/앞으로가기)
+window.addEventListener('popstate', function(event) {
+  if (masterOn) {
+    console.log('popstate로 인한 URL 변경 감지');
+    setTimeout(() => {
+      detectURLChange();
+    }, 100);
+  }
+});
+
+// URL 변경 감지 및 즉시 상태 갱신
+function detectURLChange() {
+  const newURL = window.location.href;
+  if (currentURL !== newURL) {
+    if (masterOn) {
+      console.log('URL 변경 감지:', currentURL, '->', newURL);
+    }
+    currentURL = newURL;
+    
+    // 마스터가 ON 상태일 때만 즉시 조건 확인
+    if (masterOn) {
+      console.log('URL 변경으로 인한 즉시 조건 확인 실행');
+      checkConditionsAndStart();
     }
   }
+}
+
+// URL 변경 감지 인터벌 (빠른 감지를 위해 500ms마다)
+let urlCheckIntervalId = null;
+
+function startURLChangeDetection() {
+  if (urlCheckIntervalId) {
+    clearInterval(urlCheckIntervalId);
+  }
+  urlCheckIntervalId = setInterval(detectURLChange, 500);
+  if (masterOn) {
+    console.log('URL 변경 감지 시작');
+  }
+}
+
+function stopURLChangeDetection() {
+  if (urlCheckIntervalId) {
+    clearInterval(urlCheckIntervalId);
+    urlCheckIntervalId = null;
+    if (masterOn) {
+      console.log('URL 변경 감지 중지');
+    }
+  }
+}
+
+// 조건 확인 인터벌 중지
+function stopConditionChecking() {
+  if (conditionCheckIntervalId) {
+    clearInterval(conditionCheckIntervalId);
+    conditionCheckIntervalId = null;
+    if (masterOn) {
+      console.log('조건 확인 인터벌 중지');
+    }
+  }
+}
+
+// 메시지 수신 로직
+chrome.runtime && chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (masterOn) {
+    console.log('Content script received message:', msg.type);
+  }
+  
+  try {    
+    if (msg.type === 'GET_PAGE_STATUS') {
+      // 팝업에서 현재 페이지 상태를 요청할 때
+      const pageStatus = getCurrentPageStatus();
+      
+      // 마스터가 ON일 때만 상세 로그 출력 (로그 스팸 방지)
+      if (masterOn) {
+        console.log('Sending page status:', pageStatus);
+      }
+      
+      sendResponse(pageStatus);
+      return true; // 동기 응답임을 명시
+    } else if (msg.type === 'MASTER_TOGGLE_CS') {
+      masterOn = msg.isOn;
+      
+      if (!masterOn) {
+        stopContentScriptFeatures();
+        stopConditionChecking();
+        stopURLChangeDetection(); // URL 변경 감지도 중지
+        console.log('Content script features stopped by master toggle.');
+        sendResponse({ status: 'Content script features stopped.' });
+      } else {
+        // 마스터 ON 시 URL 변경 감지 시작
+        startURLChangeDetection();
+        
+        // 현재 페이지 상태 확인
+        const pageStatus = getCurrentPageStatus();
+        console.log('마스터 ON 요청 - 현재 페이지 상태:', pageStatus);
+        
+        if (pageStatus.status === 'READY') {
+          // 모든 조건이 충족된 경우에만 기능 시작
+          startContentScriptFeatures();
+          console.log('Content script features (re)started by master toggle - 모든 조건 충족됨.');
+          sendResponse({ status: 'Content script features (re)started.', pageStatus: pageStatus });
+        } else {
+          // 조건이 충족되지 않아도 마스터 상태는 ON으로 유지하고, 조건 확인 시작
+          console.log('마스터 ON 상태로 설정됨. 조건 충족 대기 중:', pageStatus.message);
+          startConditionChecking(); // 조건 확인 시작
+          sendResponse({ status: pageStatus.message, pageStatus: pageStatus });
+        }
+      }      return true; // 동기 응답임을 명시
+    } else if (msg.type === 'SET_REFRESH_INTERVAL_CS') {
+      if (typeof msg.interval === 'number') {
+        currentRefreshInterval = msg.interval; // 1. 로컬 변수 업데이트
+        chrome.storage.sync.set({ refreshInterval: currentRefreshInterval }); // 2. 변경된 값 스토리지에 저장
+        console.log('Refresh interval updated to:', currentRefreshInterval);
+        sendResponse({ status: 'Refresh interval updated.' });
+
+        // 3. 마스터 버튼이 ON이고, 기존 인터벌이 실행 중이었다면 재시작
+        if (masterOn && refreshIntervalId) {
+          console.log('Restarting recurring sort click due to interval change.');
+          clearInterval(refreshIntervalId); // 3a. 기존 인터벌 중지
+          refreshIntervalId = setInterval(performRecurringSortClick, currentRefreshInterval * 1000); // 3b. 새 주기로 인터벌 시작
+          console.log(`Recurring sort click interval restarted with new interval: ${currentRefreshInterval}s`);
+        }
+      } else {
+        sendResponse({ status: 'Error: Invalid interval.' });
+      }
+      return true; // 동기 응답임을 명시
+    } else if (msg.type === 'SET_CLICK_DELAY_CS') {
+      if (typeof msg.delay === 'number') {
+        currentClickDelayMs = msg.delay;
+        chrome.storage.sync.set({ clickDelayMs: currentClickDelayMs }); // 스토리지에도 저장 (일관성)
+        console.log('Click delay updated to:', currentClickDelayMs);
+        sendResponse({ status: 'Click delay updated in content script.' });
+        // 이 변경은 performRecurringSortClick 내부의 await new Promise에서 다음 실행 시 자동으로 사용됨
+        // 별도로 인터벌을 재시작할 필요 없음
+      } else {
+        sendResponse({ status: 'Error: Invalid click delay.'});
+      }
+      return true; // 동기 응답임을 명시
+    }
+  } catch (error) {
+    console.error('Error in content script message handler:', error);
+    sendResponse({ status: 'Error: ' + error.message });
+  }
+  
+  return true; // 비동기 응답을 위해 항상 true 반환
 });
 
 /**
@@ -430,6 +668,7 @@ function startContentScriptFeatures() {
     clearInterval(refreshIntervalId);
     refreshIntervalId = null;
   }
+  stopConditionChecking(); // 기능이 시작되므로 조건 확인 중지
   replySettingsButtonElement = null; // 시작 시 참조 초기화
   sortByLatestButtonElement = null;  // 시작 시 참조 초기화
   mainFeatureLogic();
@@ -445,6 +684,27 @@ function stopContentScriptFeatures() {
     refreshIntervalId = null;
     console.log('순차적 버튼 클릭 반복 인터벌 중지됨.');
   }
+  stopConditionChecking(); // 조건 확인도 중지
   replySettingsButtonElement = null;
   sortByLatestButtonElement = null;
+}
+
+// 페이지 로드 시 초기화
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('페이지 로드 완료 - 초기화 시작');
+  // 마스터가 ON 상태라면 URL 변경 감지 시작
+  if (masterOn) {
+    startURLChangeDetection();
+  }
+});
+
+// 페이지가 이미 로드된 경우를 위한 대비책
+if (document.readyState === 'loading') {
+  // 아직 로딩 중이면 DOMContentLoaded 이벤트를 기다림
+} else {
+  // 이미 로드 완료된 경우 즉시 실행
+  console.log('페이지 이미 로드됨 - 초기화 시작');
+  if (masterOn) {
+    startURLChangeDetection();
+  }
 }
