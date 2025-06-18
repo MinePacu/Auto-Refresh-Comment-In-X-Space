@@ -380,12 +380,6 @@ X 스페이스에서 효율적인 댓글 관리를 위해 첫 번째와 이후 �
 
 ---
 
-<div align="center">
-
-**⭐ 이 프로젝트가 유용하다면 스타를 눌러주세요! ⭐**
-
-Made with ❤️ for X Space users
-
 </div>
 
 <div align="center">
