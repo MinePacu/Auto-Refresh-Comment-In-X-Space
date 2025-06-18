@@ -331,6 +331,53 @@ import './popup.css';
     });
   }
 
+  // 개발자 옵션 설정
+  function setupDeveloperOptions() {
+    const developerOptionsHeader = document.querySelector('.developer-options-header');
+    const developerOptionsContent = document.getElementById('developerOptionsContent');
+    const toggleIcon = document.getElementById('devOptionsToggleIcon');
+    const debugLogToggle = document.getElementById('debugLogToggle');
+
+    // 개발자 옵션 펼치기/접기
+    developerOptionsHeader.addEventListener('click', () => {
+      const isExpanded = developerOptionsContent.style.display !== 'none';
+      
+      if (isExpanded) {
+        developerOptionsContent.style.display = 'none';
+        toggleIcon.textContent = '▶';
+      } else {
+        developerOptionsContent.style.display = 'block';
+        toggleIcon.textContent = '▼';
+      }
+    });
+
+    // 디버그 로그 토글 상태 불러오기
+    chrome.storage.sync.get(['debugLogEnabled'], result => {
+      const isEnabled = result.debugLogEnabled || false;
+      updateDebugLogButton(isEnabled);
+    });
+
+    // 디버그 로그 토글 이벤트
+    debugLogToggle.addEventListener('click', () => {
+      chrome.storage.sync.get(['debugLogEnabled'], result => {
+        const currentState = result.debugLogEnabled || false;
+        const newState = !currentState;
+        
+        chrome.storage.sync.set({ debugLogEnabled: newState }, () => {
+          updateDebugLogButton(newState);
+          
+          // Content Script에 디버그 로그 상태 변경 메시지 전송
+          sendMessageToContentScript('SET_DEBUG_LOG', { enabled: newState });
+        });
+      });
+    });
+
+    function updateDebugLogButton(isEnabled) {
+      debugLogToggle.textContent = isEnabled ? 'ON' : 'OFF';
+      debugLogToggle.className = isEnabled ? 'button' : 'button off';
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     // 현재 탭 ID를 먼저 가져온 후 초기화
     getCurrentTabId((tabId) => {
@@ -340,6 +387,7 @@ import './popup.css';
         setupRefreshInterval();
         setupClickDelay();
         setupDarkModeToggle();
+        setupDeveloperOptions();
       } else {
         console.error('Failed to get current tab ID');
       }

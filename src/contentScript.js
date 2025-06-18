@@ -42,7 +42,6 @@ class XSpaceAutoRefresh {
       PAUSED: '일시 정지'
     }
   };
-
   // ================================
   // CONSTRUCTOR AND INITIALIZATION
   // ================================
@@ -56,15 +55,20 @@ class XSpaceAutoRefresh {
     
     // 첫 번째 새로고침 추적용 플래그
     this.isFirstRefresh = true;
+    
+    // 디버그 로그 설정
+    this.debugLogEnabled = false;
 
     this.initialize();
-  }/**
+  }
+
+  /**
    * Initialize the extension
    * Sets up tab ID, loads settings, and registers message listeners
-   */
-  initialize() {
+   */  initialize() {
     this.setupMessageListeners();
     this.requestTabIdFromBackground();
+    this.loadDebugLogSetting();
     
     this.logInfo('X Space Auto Refresh initializing...');
   }
@@ -152,7 +156,6 @@ class XSpaceAutoRefresh {
       }
     });
   }
-
   /**
    * Log current extension settings
    */
@@ -161,6 +164,16 @@ class XSpaceAutoRefresh {
       isActive: this.isActive,
       refreshIntervalMs: this.refreshIntervalMs,
       clickDelayMs: this.clickDelayMs
+    });
+  }
+
+  /**
+   * Load debug log setting from Chrome storage
+   */
+  loadDebugLogSetting() {
+    chrome.storage.sync.get(['debugLogEnabled'], (result) => {
+      this.debugLogEnabled = result.debugLogEnabled || false;
+      this.logInfo('Debug log setting loaded:', this.debugLogEnabled);
     });
   }
 
@@ -201,10 +214,12 @@ class XSpaceAutoRefresh {
 
         case 'SET_CLICK_DELAY':
           this.handleSetClickDelay(payload, sendResponse);
+          break;        case 'GET_STATUS':
+          this.handleGetStatus(sendResponse);
           break;
 
-        case 'GET_STATUS':
-          this.handleGetStatus(sendResponse);
+        case 'SET_DEBUG_LOG':
+          this.handleSetDebugLog(payload, sendResponse);
           break;
 
         default:
@@ -377,11 +392,21 @@ class XSpaceAutoRefresh {
   /**
    * Handle status request message
    * @param {Function} sendResponse - Response callback
-   */
-  handleGetStatus(sendResponse) {
+   */  handleGetStatus(sendResponse) {
     const status = this.getCurrentStatus();
     this.logInfo('Sending status:', status);
     sendResponse({ status: 'success', data: status });
+  }
+
+  /**
+   * Handle debug log setting message
+   * @param {Object} payload - Message payload
+   * @param {Function} sendResponse - Response callback
+   */
+  handleSetDebugLog(payload, sendResponse) {
+    this.debugLogEnabled = payload.enabled;
+    this.logInfo('Debug log setting updated:', this.debugLogEnabled);
+    sendResponse({ status: 'success' });
   }
 
   // ================================
@@ -795,7 +820,6 @@ class XSpaceAutoRefresh {
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
-
   // ================================
   // LOGGING METHODS
   // ================================
@@ -806,7 +830,9 @@ class XSpaceAutoRefresh {
    * @param {...any} args - Additional arguments
    */
   logInfo(message, ...args) {
-    console.log(`[Tab ${this.tabId}] ${message}`, ...args);
+    if (this.debugLogEnabled) {
+      console.log(`[Tab ${this.tabId}] ${message}`, ...args);
+    }
   }
 
   /**
@@ -815,7 +841,9 @@ class XSpaceAutoRefresh {
    * @param {...any} args - Additional arguments
    */
   logWarning(message, ...args) {
-    console.warn(`[Tab ${this.tabId}] ${message}`, ...args);
+    if (this.debugLogEnabled) {
+      console.warn(`[Tab ${this.tabId}] ${message}`, ...args);
+    }
   }
 
   /**
@@ -824,6 +852,7 @@ class XSpaceAutoRefresh {
    * @param {...any} args - Additional arguments
    */
   logError(message, ...args) {
+    // 에러는 디버그 로그 설정과 관계없이 항상 출력
     console.error(`[Tab ${this.tabId}] ${message}`, ...args);
   }
 }

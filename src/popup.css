@@ -268,3 +268,44 @@ code {
     border-radius: 3px;
     border: 1px solid var(--current-url-border);
 }
+
+/* 개발자 옵션 스타일 */
+.developer-options-header {
+    transition: all 0.2s ease;
+}
+
+.developer-options-header:hover {
+    opacity: 0.8;
+}
+
+.developer-options-content {
+    border-left: 3px solid var(--divider-color);
+    padding-left: 10px;
+    margin-left: 5px;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        overflow: hidden;
+    }
+    to {
+        opacity: 1;
+        max-height: 200px;
+        overflow: visible;
+    }
+}
+
+.debug-log-setting {
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.debug-log-setting label {
+    margin-right: 8px;
+    color: var(--text-color);
+}

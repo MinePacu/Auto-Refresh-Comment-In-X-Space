@@ -9,6 +9,7 @@ chrome.runtime.onInstalled.addListener(details => {
     // 확장 프로그램이 처음 설치될 때 전역 기본값 설정
     chrome.storage.sync.set({
       theme: 'system', // 전역 테마 설정
+      debugLogEnabled: false, // 디버그 로그 기본값: 비활성
     });
     console.log('Default global settings applied on installation.');
   }
