@@ -164,11 +164,14 @@ import './popup.css';
     }
   }
 
-
   // 클릭 간 대기 시간 설정
   function setupClickDelay() {
     const input = document.getElementById('clickDelay');
     const applyBtn = document.getElementById('applyClickDelayBtn');
+
+    // 최솟값과 툴팁 설정
+    input.min = 1;
+    input.title = '최소 1ms';
 
     // 저장된 값 불러오기
     chrome.storage.sync.get(['clickDelayMs'], result => {
@@ -177,25 +180,67 @@ import './popup.css';
       }
     });
 
-    // 값 변경 시 즉시 저장 (input 이벤트 사용)
-    input.addEventListener('input', () => {
+    // 값 변경 시 유효성 검사 및 저장
+    input.addEventListener('change', () => {
       let value = parseInt(input.value, 10);
-      if (isNaN(value) || value < 0) value = 0;
-      if (value > 10000) value = 10000;
-      // input.value = value; // 사용자가 입력 중일 때는 값을 강제로 바꾸지 않을 수 있음. 적용 시점에 최종 검증.
+      const originalValue = value;
+      
+      if (isNaN(value) || value < 1) {
+        value = 1;
+      }
+      if (value > 10000) {
+        value = 10000;
+      }
+      
+      input.value = value; // Ensure input reflects validated value
+      
+      if (originalValue !== value) {
+        showClickDelayAdjustment(originalValue, value);
+      }
+      
+      chrome.storage.sync.set({ clickDelayMs: value });
     });
     
     applyBtn.addEventListener('click', () => {
       let value = parseInt(input.value, 10);
-      if (isNaN(value) || value < 0) value = 0;
-      if (value > 10000) value = 10000;
+      const originalValue = value;
+      
+      if (isNaN(value) || value < 1) {
+        value = 1;
+      }
+      if (value > 10000) {
+        value = 10000;
+      }
+      
       input.value = value; // 최종 검증된 값으로 input 업데이트
+
+      if (originalValue !== value) {
+        showClickDelayAdjustment(originalValue, value);
+      }
 
       chrome.storage.sync.set({ clickDelayMs: value }, () => {
         // contentScript에 직접 메시지 전달
         sendMessageToContentScript('SET_CLICK_DELAY', { delay: value });
       });
     });
+  }
+
+  // 클릭 간 대기시간 조정 메시지 표시
+  function showClickDelayAdjustment(originalValue, adjustedValue) {
+    const message = `클릭 간 대기시간이 ${originalValue}ms에서 ${adjustedValue}ms로 조정되었습니다.`;
+    console.warn(message);
+    
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+      const originalText = statusText.textContent;
+      statusText.textContent = `조정됨: ${adjustedValue}ms`;
+      statusText.style.color = '#ff9800';
+      
+      setTimeout(() => {
+        statusText.textContent = originalText;
+        statusText.style.color = '';
+      }, 3000);
+    }
   }
 
   // 테마 적용 함수

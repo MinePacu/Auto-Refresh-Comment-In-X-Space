@@ -378,9 +378,16 @@ class XSpaceAutoRefresh {
    * Handle click delay setting message
    * @param {Object} payload - Message payload
    * @param {Function} sendResponse - Response callback
-   */
-  handleSetClickDelay(payload, sendResponse) {
-    this.clickDelayMs = payload.delay;
+   */  handleSetClickDelay(payload, sendResponse) {
+    let delay = payload.delay;
+    
+    // 최솟값 검증
+    if (delay < 1) {
+      delay = 1;
+      this.logWarning(`Click delay adjusted from ${payload.delay}ms to ${delay}ms (minimum: 1ms)`);
+    }
+    
+    this.clickDelayMs = delay;
     
     // Save as global setting (shared across all tabs)
     chrome.storage.sync.set({ clickDelayMs: this.clickDelayMs });
