@@ -453,7 +453,9 @@ class XSpaceAutoRefresh {
     this.stopRefreshCycle();
 
     this.logInfo('Detection stopped');
-  }  /**
+  }  
+  
+  /**
    * Perform detection cycle
    * Checks all conditions and manages refresh cycle accordingly
    */
