@@ -146,34 +146,41 @@ class XSpaceAutoRefresh {  constructor() {
 
     console.log(`Tab ${this.tabId} detection started`);
   }
-
   stopDetection() {
     if (this.detectionInterval) {
       clearInterval(this.detectionInterval);
       this.detectionInterval = null;
     }
     
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
+    // 탐지 정지 시 새로고침 주기도 정지
+    this.stopRefreshCycle();
 
     console.log(`Tab ${this.tabId} detection stopped`);
   }
 
+  stopRefreshCycle() {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+      this.refreshInterval = null;
+      console.log(`Tab ${this.tabId} refresh cycle stopped - conditions no longer met`);
+    }
+  }
   performDetection() {
     // 1. 트위터(X) 사이트 감지
     if (!this.isOnXSite()) {
+      this.stopRefreshCycle(); // 다른 사이트로 이동 시 새로고침 정지
       return;
     }
 
     // 2. 스페이스가 포함된 트윗 상세 게시글 감지
     if (!this.isOnSpaceTweet()) {
+      this.stopRefreshCycle(); // 스페이스 트윗이 아닌 페이지로 이동 시 새로고침 정지
       return;
     }
 
     // 3. 스페이스 청취 중 감지
     if (!this.isListeningToSpace()) {
+      this.stopRefreshCycle(); // 스페이스 청취를 중단했을 때 새로고침 정지
       return;
     }
 
@@ -214,26 +221,42 @@ class XSpaceAutoRefresh {  constructor() {
     const replies = document.querySelectorAll('[data-testid="tweetText"]');
     return replies.length;
   }
-
   startRefreshCycle() {
     // 이미 새로고침 주기가 실행 중이면 중복 실행 방지
     if (this.refreshInterval) {
       return;
     }
 
-    // 첫 실행은 즉시
-    this.performRefreshActions();
+    // 첫 실행은 즉시 (조건 재확인 후)
+    if (this.isOnXSite() && this.isOnSpaceTweet() && this.isListeningToSpace()) {
+      this.performRefreshActions();
+    } else {
+      console.log(`Tab ${this.tabId} conditions no longer met, not starting refresh cycle`);
+      return;
+    }
 
     // 설정된 주기마다 반복
     this.refreshInterval = setInterval(() => {
+      // 매 실행마다 조건 재확인
+      if (!this.isActive || !this.isOnXSite() || !this.isOnSpaceTweet() || !this.isListeningToSpace()) {
+        console.log(`Tab ${this.tabId} conditions changed during refresh cycle, stopping`);
+        this.stopRefreshCycle();
+        return;
+      }
       this.performRefreshActions();
     }, this.refreshIntervalMs);
 
     console.log(`Tab ${this.tabId} refresh cycle started with interval: ${this.refreshIntervalMs}ms`);
   }
-
   async performRefreshActions() {
     try {
+      // 실행 전 조건 재확인 (페이지가 변경되었을 수 있음)
+      if (!this.isActive || !this.isOnXSite() || !this.isOnSpaceTweet() || !this.isListeningToSpace()) {
+        console.log(`Tab ${this.tabId} conditions no longer met during refresh actions, stopping`);
+        this.stopRefreshCycle();
+        return;
+      }
+
       // 답글이 10개 이상인지 확인
       const replyCount = this.getReplyCount();
       if (replyCount < 10) {
@@ -247,6 +270,13 @@ class XSpaceAutoRefresh {  constructor() {
       window.scrollBy(0, 500);
       console.log(`Tab ${this.tabId} scrolled 500px`);
 
+      // 스크롤 후 조건 재확인
+      if (!this.isActive || !this.isOnXSite() || !this.isOnSpaceTweet() || !this.isListeningToSpace()) {
+        console.log(`Tab ${this.tabId} conditions changed after scroll, stopping`);
+        this.stopRefreshCycle();
+        return;
+      }
+
       // 2. 답글 설정 버튼 클릭
       const replySettingsBtn = this.getElementByXPath(this.xpaths.replySettingsButton);
       if (replySettingsBtn) {
@@ -255,6 +285,13 @@ class XSpaceAutoRefresh {  constructor() {
         
         // 설정된 지연 시간 대기
         await this.sleep(this.clickDelayMs);
+        
+        // 클릭 후 조건 재확인
+        if (!this.isActive || !this.isOnXSite() || !this.isOnSpaceTweet() || !this.isListeningToSpace()) {
+          console.log(`Tab ${this.tabId} conditions changed after first click, stopping`);
+          this.stopRefreshCycle();
+          return;
+        }
         
         // 3. 최신순 정렬 버튼 클릭
         const latestSortBtn = this.getElementByXPath(this.xpaths.latestSortButton);
