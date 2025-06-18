@@ -45,6 +45,7 @@ class XSpaceAutoRefresh {  constructor() {
   getTabSettingKey(key) {
     return `${key}_tab_${this.tabId}`;
   }
+
   loadSettings() {
     // 탭별 설정과 전역 설정을 함께 로드
     const tabMasterKey = this.getTabSettingKey('masterOn');
@@ -63,7 +64,9 @@ class XSpaceAutoRefresh {  constructor() {
         this.startDetection();
       }
     });
-  }  handleMessage(message, sender, sendResponse) {
+  }  
+  
+  handleMessage(message, sender, sendResponse) {
     
     switch (message.type) {
       case 'TOGGLE_MASTER':
@@ -211,6 +214,7 @@ class XSpaceAutoRefresh {  constructor() {
     const replies = document.querySelectorAll('[data-testid="tweetText"]');
     return replies.length;
   }
+
   startRefreshCycle() {
     // 이미 새로고침 주기가 실행 중이면 중복 실행 방지
     if (this.refreshInterval) {
@@ -287,4 +291,3 @@ class XSpaceAutoRefresh {  constructor() {
 
 // 인스턴스 생성
 const xSpaceAutoRefresh = new XSpaceAutoRefresh();
-
