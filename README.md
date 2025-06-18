@@ -1,12 +1,12 @@
-# <img src="public/icons/icon_48.png" width="45" align="le### 2. 상태 메시지 이해하기
-- **상태: 활성 중 (답글: N개)** + 🔄: 정상 작동 중 (댓글 자동 정렬 실행)
-- **상태: 비활성**: 마스터 OFF 상태 (모든 기능 정지)
-- **상태: X 사이트가 아님**: X 사이트가 아닌 페이지에 있음
-- **상태: 스페이스 트윗이 아님**: X에는 접속했으나 스페이스 상세 페이지가 아님
-- **상태: 스페이스 청취 중이 아님**: 스페이스 페이지에는 있으나 청취 상태가 아님
-- **조정됨: N초**: Rate Limit으로 인해 새로고침 간격이 자동 조정됨uto Refresh Comment In X Space
+# <img src="public/icons/icon_48.png" width="45" align="left"> Auto Refresh Comment In X Space
 
 X (구 트위터) 스페이스 댓글을 자동으로 최신순으로 정렬해주는 Chrome 확장 프로그램입니다.
+
+![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
+![Manifest](https://img.shields.io/badge/manifest-v3-green.svg)
+![Chrome](https://img.shields.io/badge/Chrome-Extension-yellow.svg)
+
+> 📌 **주요 기능**: X 스페이스에서 실시간으로 새로운 댓글을 확인할 수 있도록 자동 새로고침 및 최신순 정렬을 제공합니다.
 
 ## 🌟 핵심 기능
 
@@ -64,11 +64,14 @@ X (구 트위터) 스페이스 댓글을 자동으로 최신순으로 정렬해�
 5. **자동 정렬 시작**: 모든 조건이 충족되면 댓글이 자동으로 최신순 정렬됩니다
 
 ### 2. 상태 메시지 이해하기
-- **상태: 활성화됨** + 🔄: 정상 작동 중 (댓글 자동 정렬 실행)
-- **상태: 비활성화됨**: 마스터 OFF 상태 (모든 기능 정지)
-- **트위터 접속 대기 중**: X 사이트가 아닌 페이지에 있음
-- **트윗 상세 페이지 대기 중**: X에는 접속했으나 스페이스 상세 페이지가 아님
-- **스페이스 청취 대기 중**: 스페이스 페이지에는 있으나 청취 상태가 아님
+- **상태: 활성 중 (답글: N개)**: 정상 작동 중 (댓글 자동 정렬 실행)
+- **상태: 비활성**: 마스터 OFF 상태 (모든 기능 정지)  
+- **상태: X 사이트가 아님**: X 사이트가 아닌 페이지에 있음
+- **상태: 스페이스 트윗이 아님**: X에는 접속했으나 스페이스 상세 페이지가 아님
+- **상태: 스페이스 청취 중이 아님**: 스페이스 페이지에는 있으나 청취 상태가 아님
+- **조정됨: N초**: Rate Limit으로 인해 새로고침 간격이 자동 조정됨
+
+> 💡 **팁**: 실시간 상태 확인을 위해 팝업을 열어두면 1초마다 상태가 업데이트됩니다.
 
 ### 3. 고급 설정
 #### 새로고침 주기 조정
@@ -99,7 +102,7 @@ X (구 트위터) 스페이스 댓글을 자동으로 최신순으로 정렬해�
 ```bash
 # 저장소 클론
 git clone <repository-url>
-cd Auto\ Refresh\ in\ X\ Space
+cd Auto-Refresh-Comment-In-X-Space-1
 
 # 의존성 설치
 npm install
@@ -109,9 +112,6 @@ npm run watch
 
 # 프로덕션 빌드
 npm run build
-
-# 코드 검사
-npm run lint
 ```
 
 ### 프로젝트 구조
@@ -134,44 +134,90 @@ npm run lint
 ```
 
 ### 주요 기술 스택
-- **JavaScript (ES6+)**: 메인 로직 구현
-- **Chrome Extension Manifest V2**: 확장 프로그램 API
-- **Webpack 5**: 모듈 번들링 및 최적화
-- **CSS Variables**: 동적 테마 지원
-- **Chrome Storage API**: 설정 동기화
-- **XPath**: DOM 요소 정확한 선택
+- **JavaScript (ES6+)**: 메인 로직 구현 및 클래스 기반 아키텍처
+- **Chrome Extension Manifest V3**: 최신 확장 프로그램 API 및 Service Worker
+- **Webpack 5**: 모듈 번들링, 최적화 및 개발 환경 지원
+- **CSS Variables**: 동적 테마 시스템 (라이트/다크/시스템 모드)
+- **Chrome Storage API**: 탭별 독립 설정 및 전역 설정 동기화
+- **XPath Selectors**: 정확한 DOM 요소 선택 및 X UI 변경 대응
 
 ### 핵심 구조 설명
 
 #### ContentScript (contentScript.js)
 - **주요 역할**: X 스페이스 페이지에서 실제 댓글 정렬 작업 수행
-- **클래스 기반 구조**: XSpaceAutoRefresh 클래스로 모든 기능을 캡슐화
+- **클래스 기반 구조**: `XSpaceAutoRefresh` 클래스로 모든 기능을 캡슐화
+- **핵심 상수**: Rate Limit 정책, XPath 선택자, 스크롤 설정 등 중앙 관리
 - **감지 기능**: 
-  - URL 변경 감지 (SPA 지원)
-  - 스페이스 청취 상태 감지 (XPath 기반)
-  - 페이지 조건 확인 (Rate Limit 고려)
+  - 페이지 상태 실시간 모니터링 (1초마다)
+  - 스페이스 청취 상태 감지 (`참여했습니다`/`일시정지` 구분)
+  - SPA 지원을 위한 URL 및 DOM 변경 감지
 - **자동화 로직**:
-  - 조건 충족 시 자동 시작
-  - **첫 번째 새로고침**: 스크롤 다운 → 맨위 이동 → 설정 클릭 → 최신순 클릭
-  - **이후 새로고침**: 설정 클릭 → 최신순 클릭 (스크롤 없음)
-  - 마스터 OFF 시 완전 정지
-- **Rate Limit 보호**: X API 제한을 고려한 최소 간격 검증
+  - 조건 충족 시 자동 시작/중단
+  - **첫 번째 새로고침**: 스크롤 다운(500px) → 맨위 이동 → 버튼 클릭 시퀀스
+  - **이후 새로고침**: 버튼 클릭만으로 효율성 최적화
+  - 마스터 OFF 시 완전 정지 및 리소스 정리
+- **Rate Limit 보호**: X API 제한(150 requests/15분)을 고려한 최소 7.2초 간격 검증
+- **오류 처리**: 네트워크 오류, 요소 부재 시 안정적인 fallback 및 재시도
 
 #### Popup (popup.js + popup.html + popup.css)
-- **주요 역할**: 사용자 인터페이스 제공
-- **실시간 상태**: 1초마다 상태 업데이트 (답글 개수 포함)
-- **설정 관리**: 모든 설정값 저장/복원 (탭별 독립)
-- **테마 시스템**: CSS 변수 기반 다크/라이트 모드
-- **Rate Limit 검증**: 새로고침 간격 입력 시 실시간 유효성 검사
-- **시각적 피드백**: 설정 조정 시 상태 텍스트 색상 변경으로 즉시 알림
+- **주요 역할**: 사용자 인터페이스 및 설정 관리
+- **실시간 상태 표시**: 1초마다 Content Script와 통신하여 상태 업데이트
+- **설정 관리**: 
+  - 탭별 독립 마스터 ON/OFF 상태 (`masterOn_tab_{tabId}`)
+  - 전역 설정 (새로고침 주기, 클릭 대기시간, 테마)
+  - Chrome Storage Sync를 통한 기기 간 동기화
+- **입력 검증**: 
+  - 새로고침 주기 실시간 유효성 검사 (8초~3600초)
+  - Rate Limit 위반 시 자동 조정 및 시각적 피드백
+- **테마 시스템**: CSS Variables 기반 다크/라이트/시스템 모드 지원
+- **시각적 피드백**: 설정 변경, 조정, 오류 시 상태 텍스트 색상 변경 및 스피너 표시
 
 #### Background (background.js)
-- **주요 역할**: 탭별 독립적인 설정 관리 및 자동 정리
-- **탭 관리**: 
-  - 탭 생성/업데이트 시 Content Script에 실제 탭 ID 전달
-  - 탭 닫힐 때 해당 탭의 설정 자동 정리
-- **메시지 중계**: Popup과 ContentScript 간 통신 지원
-- **초기 설정**: 확장 프로그램 최초 설치 시 기본값 설정
+- **Service Worker 기반**: Manifest V3 호환 백그라운드 처리
+- **탭 생명주기 관리**: 
+  - 탭 로딩 완료 시 Content Script에 실제 탭 ID 전달
+  - 탭 닫힘 시 해당 탭 설정 자동 정리 (`_tab_{tabId}` 패턴)
+- **메시지 라우팅**: Popup ↔ Content Script 간 통신 중계
+- **초기 설정**: 확장 프로그램 최초 설치 시 기본값 설정 (`theme: 'system'`)
+
+### 🐛 디버깅 및 개발자 도구
+
+#### Chrome 개발자 도구에서 디버깅
+```javascript
+// 콘솔에서 확인할 수 있는 디버그 로그들
+[Tab 123] DEBUG: Starting detection cycle
+[Tab 123] DEBUG: All conditions met, starting refresh cycle  
+[Tab 123] DEBUG: isFirstRefresh = true
+[Tab 123] Performing FIRST refresh actions - including scroll and go to top
+[Tab 123] DEBUG: Starting scroll down action
+[Tab 123] Scrolled 500px (before: 0px, after: 500px)
+[Tab 123] DEBUG: Starting go to top action
+[Tab 123] Scrolled to top of page (before: 500px, after: 0px)
+```
+
+#### 주요 상수 및 설정값
+```javascript
+// contentScript.js의 주요 상수들
+DETECTION_INTERVAL: 1000          // 감지 주기 (1초)
+DEFAULT_REFRESH_INTERVAL: 10000   // 기본 새로고침 주기 (10초)
+MIN_REFRESH_INTERVAL: 7200        // 최소 새로고침 주기 (7.2초)
+SCROLL_AMOUNT: 500               // 스크롤 픽셀 수
+MIN_REPLY_COUNT: 10              // 최소 답글 수 요구사항
+```
+
+#### Storage 구조
+```javascript
+// Chrome Storage에 저장되는 데이터 구조
+{
+  // 전역 설정
+  "refreshInterval": 10,           // 새로고침 주기 (초)
+  "clickDelayMs": 700,            // 클릭 간 대기시간 (ms)
+  "theme": "system",              // 테마 설정
+  
+  // 탭별 설정 (예: 탭 ID가 123인 경우)
+  "masterOn_tab_123": true        // 해당 탭의 마스터 ON/OFF 상태
+}
+```
 
 ## ⚙️ 설정 옵션
 
@@ -274,18 +320,26 @@ X 스페이스에서 효율적인 댓글 관리를 위해 첫 번째와 이후 �
 
 ### 🐛 버그 리포트
 버그를 발견하셨나요? 다음 정보를 포함하여 이슈를 등록해주세요:
-- 브라우저 버전 (Chrome 버전)
-- 확장 프로그램 버전
-- 재현 단계
-- 예상 결과 vs 실제 결과
-- 콘솔 오류 메시지 (있는 경우)
+- **Chrome 버전**: `chrome://version/`에서 확인
+- **확장 프로그램 버전**: 0.1.0 (현재)
+- **재현 단계**: 구체적인 단계별 설명
+- **예상 결과 vs 실제 결과**: 명확한 비교
+- **콘솔 로그**: F12 → Console 탭의 오류 메시지
+- **X 페이지 URL**: 문제가 발생한 스페이스 URL (개인정보 제외)
 
 ### 💡 기능 제안
 새로운 기능 아이디어가 있으시나요?
-- 기능 설명
-- 사용 사례
-- 예상되는 이점
-- 구현 복잡도 (선택사항)
+- **기능 설명**: 구체적인 기능 내용
+- **사용 사례**: 어떤 상황에서 유용한지
+- **예상 이점**: 사용자에게 제공할 가치
+- **기술적 고려사항**: Rate Limit, 성능 등
+
+#### 코딩 가이드라인
+- **ES6+ 문법** 사용 
+- **클래스 기반** 구조 유지
+- **상세한 주석** 작성 (JSDoc 스타일)
+- **Rate Limit 고려** 필수
+- **디버그 로그** 추가 권장
 
 
 ## 📄 라이선스
@@ -304,9 +358,11 @@ X 스페이스에서 효율적인 댓글 관리를 위해 첫 번째와 이후 �
 이 프로젝트는 [Chrome Extension CLI](https://github.com/dutiyesh/chrome-extension-cli)를 기반으로 제작되었습니다.
 
 ### 사용된 기술
-- **Chrome Extension APIs**: 확장 프로그램 핵심 기능
-- **Webpack**: 모듈 번들링 및 최적화
-- **CSS Variables**: 동적 테마 시스템
+- **Chrome Extension APIs**: 확장 프로그램 핵심 기능 (Storage, Tabs, Runtime)
+- **Webpack 5**: 모듈 번들링, 개발 환경 및 최적화
+- **CSS Variables**: 동적 테마 시스템 및 반응형 디자인
+- **XPath**: DOM 요소 정확한 선택 및 X UI 변경 대응
+- **ES6+ Classes**: 객체지향 프로그래밍 및 코드 구조화
 
 ## 📞 연락처 및 지원
 
@@ -320,6 +376,15 @@ X 스페이스에서 효율적인 댓글 관리를 위해 첫 번째와 이후 �
 - 새로운 기능 및 버그 수정 사항은 [Releases](https://github.com/your-repo/releases)에서 확인하세요
 - 중요한 업데이트는 확장 프로그램을 통해 자동 알림됩니다
 
+
 ---
+
+<div align="center">
+
+**⭐ 이 프로젝트가 유용하다면 스타를 눌러주세요! ⭐**
+
+Made with ❤️ for X Space users
+
+</div>
 
 <div align="center">
