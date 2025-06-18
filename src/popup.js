@@ -51,11 +51,22 @@ import './popup.css';
   // To get storage access, we have to mention it in `permissions` property of manifest.json file
   // More information on Permissions can we found at
   // https://developer.chrome.com/extensions/declare_permissions
-  
+    // X Rate Limit 관련 상수
+  const X_RATE_LIMIT_CONFIG = {
+    MIN_REFRESH_INTERVAL_SECONDS: 8,  // 최소 8초 (content script의 7.2초보다 약간 여유있게)
+    MAX_REFRESH_INTERVAL_SECONDS: 3600, // 최대 1시간
+    RATE_LIMIT_INFO: 'X Rate Limit: 150 requests/15min'
+  };
+
   // 새로고침 주기 저장 및 복원
   function setupRefreshInterval() {
     const input = document.getElementById('refreshInterval');
     const applyBtn = document.getElementById('applyRefreshIntervalBtn');
+
+    // 입력 필드에 최솟값과 툴팁 설정
+    input.min = X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS;
+    input.max = X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS;
+    input.title = `최소 ${X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS}초 (${X_RATE_LIMIT_CONFIG.RATE_LIMIT_INFO})`;
 
     // 저장된 값 불러오기
     chrome.storage.sync.get(['refreshInterval'], result => {
@@ -64,28 +75,93 @@ import './popup.css';
       }
     });
 
-    // 값 변경 시 저장 (기존 로직 유지)
+    // 값 변경 시 유효성 검사 및 저장
     input.addEventListener('change', () => {
       let value = parseInt(input.value, 10);
-      if (isNaN(value) || value < 1) value = 1;
-      if (value > 3600) value = 3600;
+      const originalValue = value;
+      
+      if (isNaN(value) || value < X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS) {
+        value = X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS;
+      }
+      if (value > X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS) {
+        value = X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS;
+      }
+      
       input.value = value; // Ensure input reflects validated value
+      
+      if (originalValue !== value) {
+        showRateLimitWarning(originalValue, value);
+      }
+      
       chrome.storage.sync.set({ refreshInterval: value });
     });
 
     // "적용" 버튼 클릭 시 contentScript로 전송
     applyBtn.addEventListener('click', () => {
       let value = parseInt(input.value, 10);
-      if (isNaN(value) || value < 1) value = 1;
-      if (value > 3600) value = 3600;
+      const originalValue = value;
+      
+      if (isNaN(value) || value < X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS) {
+        value = X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS;
+      }
+      if (value > X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS) {
+        value = X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS;
+      }
+      
       input.value = value; // Ensure input reflects validated value before sending
+
+      if (originalValue !== value) {
+        showRateLimitWarning(originalValue, value);
+      }
 
       // 먼저 storage에 저장
       chrome.storage.sync.set({ refreshInterval: value }, () => {
         // contentScript에 직접 메시지 전달
-        sendMessageToContentScript('SET_REFRESH_INTERVAL', { interval: value });
+        sendMessageToContentScript('SET_REFRESH_INTERVAL', { interval: value }, (response) => {
+          if (response && response.status === 'adjusted') {
+            // Content script에서 추가 조정이 있었을 경우
+            input.value = response.adjustedInterval;
+            showAdjustmentMessage(response.message);
+          }
+        });
       });
     });
+  }
+
+  // Rate Limit 경고 메시지 표시
+  function showRateLimitWarning(originalValue, adjustedValue) {
+    const message = `새로고침 간격이 ${originalValue}초에서 ${adjustedValue}초로 조정되었습니다.\n(${X_RATE_LIMIT_CONFIG.RATE_LIMIT_INFO})`;
+    console.warn(message);
+    
+    // 임시 메시지 표시 (선택적)
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+      const originalText = statusText.textContent;
+      statusText.textContent = `조정됨: ${adjustedValue}초`;
+      statusText.style.color = '#ff9800';
+      
+      setTimeout(() => {
+        statusText.textContent = originalText;
+        statusText.style.color = '';
+      }, 3000);
+    }
+  }
+
+  // Content Script 조정 메시지 표시
+  function showAdjustmentMessage(message) {
+    console.info('Content Script adjustment:', message);
+    
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+      const originalText = statusText.textContent;
+      statusText.textContent = '간격 조정됨';
+      statusText.style.color = '#ff9800';
+      
+      setTimeout(() => {
+        statusText.textContent = originalText;
+        statusText.style.color = '';
+      }, 3000);
+    }
   }
 
 

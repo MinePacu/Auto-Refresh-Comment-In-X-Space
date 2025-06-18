@@ -13,13 +13,21 @@ class XSpaceAutoRefresh {
   // ================================
   // CONSTANTS AND CONFIGURATION
   // ================================
-  
-  static CONSTANTS = {
+    static CONSTANTS = {
     DETECTION_INTERVAL: 1000,           // 1초마다 상태 감지
     DEFAULT_REFRESH_INTERVAL: 10000,    // 기본 10초 새로고침 주기
     DEFAULT_CLICK_DELAY: 700,           // 기본 700ms 클릭 간 대기
     MIN_REPLY_COUNT: 10,               // 최소 답글 수
     SCROLL_AMOUNT: 500,                // 스크롤 픽셀
+    
+    // X (Twitter) Rate Limit 관련 설정
+    // X-Rate-Limit-Limit: 150 requests per 15-minute window
+    X_RATE_LIMIT: 150,                 // X API Rate Limit (15분당 150 요청)
+    X_RATE_WINDOW_MINUTES: 15,         // Rate Limit 시간 윈도우 (분)
+    SAFETY_MARGIN: 0.8,                // 안전 마진 (80% 사용)
+    MIN_REFRESH_INTERVAL: 7200,        // 최소 새로고침 간격 (밀리초) = 7.2초
+    // 계산: (15분 * 60초 * 1000ms) / (150 * 0.8) = 900000 / 120 = 7500ms
+    // 실제로는 7.2초로 더 안전하게 설정
     
     // XPath selectors for X (Twitter) elements
     XPATHS: {
@@ -38,7 +46,6 @@ class XSpaceAutoRefresh {
   // ================================
   // CONSTRUCTOR AND INITIALIZATION
   // ================================
-
   constructor() {
     this.isActive = false;
     this.detectionInterval = null;
@@ -46,9 +53,12 @@ class XSpaceAutoRefresh {
     this.refreshIntervalMs = XSpaceAutoRefresh.CONSTANTS.DEFAULT_REFRESH_INTERVAL;
     this.clickDelayMs = XSpaceAutoRefresh.CONSTANTS.DEFAULT_CLICK_DELAY;
     this.tabId = null;
+    
+    // 첫 번째 새로고침 추적용 플래그
+    this.isFirstRefresh = true;
 
     this.initialize();
-  }  /**
+  }/**
    * Initialize the extension
    * Sets up tab ID, loads settings, and registers message listeners
    */
@@ -102,10 +112,10 @@ class XSpaceAutoRefresh {
     }
     return `${key}_tab_${this.tabId}`;
   }
-
   // ================================
   // SETTINGS MANAGEMENT
   // ================================
+  
   /**
    * Load extension settings from Chrome storage
    */
@@ -121,7 +131,18 @@ class XSpaceAutoRefresh {
     
     chrome.storage.sync.get(settingsToLoad, (result) => {
       this.isActive = result[tabMasterKey] || false;
-      this.refreshIntervalMs = (result.refreshInterval || 10) * 1000;
+      
+      // 새로고침 간격 유효성 검사 적용
+      const rawRefreshInterval = (result.refreshInterval || 10) * 1000;
+      this.refreshIntervalMs = this.validateRefreshInterval(rawRefreshInterval);
+      
+      // 로드된 값이 조정되었다면 저장소에 다시 저장
+      if (this.refreshIntervalMs !== rawRefreshInterval) {
+        const adjustedSeconds = this.refreshIntervalMs / 1000;
+        chrome.storage.sync.set({ refreshInterval: adjustedSeconds });
+        this.logWarning(`Loaded refresh interval adjusted from ${rawRefreshInterval/1000}s to ${adjustedSeconds}s due to Rate Limit constraints`);
+      }
+      
       this.clickDelayMs = result.clickDelayMs || XSpaceAutoRefresh.CONSTANTS.DEFAULT_CLICK_DELAY;
       
       this.logCurrentSettings();
@@ -266,23 +287,76 @@ class XSpaceAutoRefresh {
     
     sendResponse({ status: 'success' });
   }
-
   /**
    * Handle refresh interval setting message
    * @param {Object} payload - Message payload
    * @param {Function} sendResponse - Response callback
    */
   handleSetRefreshInterval(payload, sendResponse) {
-    this.refreshIntervalMs = payload.interval * 1000;
+    const requestedInterval = payload.interval * 1000; // Convert to milliseconds
+    const validatedInterval = this.validateRefreshInterval(requestedInterval);
+    
+    this.refreshIntervalMs = validatedInterval;
     
     // Save as global setting (shared across all tabs)
-    chrome.storage.sync.set({ refreshInterval: payload.interval });
-    this.logInfo('Refresh interval set to:', this.refreshIntervalMs);
+    // Store in seconds for compatibility with popup
+    chrome.storage.sync.set({ refreshInterval: validatedInterval / 1000 });
+    
+    if (validatedInterval !== requestedInterval) {
+      const minSeconds = XSpaceAutoRefresh.CONSTANTS.MIN_REFRESH_INTERVAL / 1000;
+      this.logWarning(`Refresh interval adjusted from ${payload.interval}s to ${validatedInterval/1000}s (minimum: ${minSeconds}s due to X Rate Limit)`);
+      sendResponse({ 
+        status: 'adjusted', 
+        adjustedInterval: validatedInterval / 1000,
+        message: `간격이 X Rate Limit 정책에 따라 최소 ${minSeconds}초로 조정되었습니다.`
+      });
+    } else {
+      this.logInfo('Refresh interval set to:', this.refreshIntervalMs);
+      sendResponse({ status: 'success' });
+    }
     
     // Restart refresh cycle if needed with new interval
     this.restartRefreshCycleIfNeeded();
+  }
+
+  /**
+   * Validate refresh interval against X Rate Limit constraints
+   * @param {number} intervalMs - Requested interval in milliseconds
+   * @returns {number} Validated interval in milliseconds
+   */
+  validateRefreshInterval(intervalMs) {
+    const minInterval = XSpaceAutoRefresh.CONSTANTS.MIN_REFRESH_INTERVAL;
     
-    sendResponse({ status: 'success' });
+    if (intervalMs < minInterval) {
+      this.logWarning(`Refresh interval ${intervalMs}ms is below minimum ${minInterval}ms (X Rate Limit: ${XSpaceAutoRefresh.CONSTANTS.X_RATE_LIMIT} requests per ${XSpaceAutoRefresh.CONSTANTS.X_RATE_WINDOW_MINUTES} minutes)`);
+      return minInterval;
+    }
+    
+    return intervalMs;
+  }
+
+  /**
+   * Calculate safe refresh interval based on X Rate Limit
+   * @returns {Object} Rate limit information and recommended intervals
+   */
+  static calculateRateLimitInfo() {
+    const rateLimitPerWindow = XSpaceAutoRefresh.CONSTANTS.X_RATE_LIMIT;
+    const windowMinutes = XSpaceAutoRefresh.CONSTANTS.X_RATE_WINDOW_MINUTES;
+    const safetyMargin = XSpaceAutoRefresh.CONSTANTS.SAFETY_MARGIN;
+    
+    // Calculate safe request rate
+    const safeRequestsPerWindow = Math.floor(rateLimitPerWindow * safetyMargin);
+    const windowMs = windowMinutes * 60 * 1000;
+    const minIntervalMs = Math.ceil(windowMs / safeRequestsPerWindow);
+    
+    return {
+      rateLimitPerWindow,
+      windowMinutes,
+      safeRequestsPerWindow,
+      minIntervalMs,
+      minIntervalSeconds: minIntervalMs / 1000,
+      recommendedIntervalSeconds: Math.ceil(minIntervalMs / 1000)
+    };
   }
 
   /**
@@ -313,13 +387,17 @@ class XSpaceAutoRefresh {
   // ================================
   // DETECTION AND STATE MANAGEMENT
   // ================================
-
   /**
    * Start the detection cycle
    * Begins monitoring page state at regular intervals
    */
   startDetection() {
     this.stopDetection(); // Clear any existing interval
+    
+    this.logInfo('DEBUG: Starting detection cycle');
+    
+    // Execute detection immediately on start
+    this.performDetection();
     
     // Start detection at regular intervals
     this.detectionInterval = setInterval(() => {
@@ -348,25 +426,31 @@ class XSpaceAutoRefresh {
    * Checks all conditions and manages refresh cycle accordingly
    */
   performDetection() {
+    this.logInfo('DEBUG: Performing detection cycle');
+    
     // Stop refresh cycle if not on X site
     if (!this.isOnXSite()) {
+      this.logInfo('DEBUG: Not on X site, stopping refresh cycle');
       this.stopRefreshCycle();
       return;
     }
 
     // Stop refresh cycle if not on Space tweet
     if (!this.isOnSpaceTweet()) {
+      this.logInfo('DEBUG: Not on Space tweet, stopping refresh cycle');
       this.stopRefreshCycle();
       return;
     }
 
     // Stop refresh cycle if not listening to Space
     if (!this.isListeningToSpace()) {
+      this.logInfo('DEBUG: Not listening to Space, stopping refresh cycle');
       this.stopRefreshCycle();
       return;
     }
 
     // All conditions met - start refresh cycle
+    this.logInfo('DEBUG: All conditions met, starting refresh cycle');
     this.startRefreshCycle();
   }
 
@@ -410,7 +494,6 @@ class XSpaceAutoRefresh {
            this.isOnSpaceTweet() && 
            this.isListeningToSpace();
   }
-
   /**
    * Stop the refresh cycle
    */
@@ -420,6 +503,9 @@ class XSpaceAutoRefresh {
       this.refreshInterval = null;
       this.logInfo('Refresh cycle stopped - conditions no longer met');
     }
+    
+    // 사이클이 중단되면 다음에 다시 시작할 때 첫 번째 새로고침부터 시작
+    this.isFirstRefresh = true;
   }
 
   // ================================
@@ -481,11 +567,10 @@ class XSpaceAutoRefresh {
     const replies = document.querySelectorAll('[data-testid="tweetText"]');
     return replies.length;
   }
-
   // ================================
   // REFRESH CYCLE MANAGEMENT
   // ================================
-
+  
   /**
    * Start the refresh cycle
    * Begins automatic scrolling and button clicking at set intervals
@@ -493,11 +578,17 @@ class XSpaceAutoRefresh {
   startRefreshCycle() {
     // Prevent duplicate cycles
     if (this.refreshInterval) {
+      this.logInfo('DEBUG: Refresh cycle already running, skipping start');
       return;
     }
 
+    // 새 사이클 시작 시 첫 번째 새로고침 플래그 리셋
+    this.isFirstRefresh = true;
+    this.logInfo('DEBUG: Starting new refresh cycle, isFirstRefresh set to true');
+
     // Execute first refresh immediately (with condition check)
     if (this.shouldStartRefreshCycle()) {
+      this.logInfo('DEBUG: Conditions met, executing first refresh immediately');
       this.performRefreshActions();
     } else {
       this.logWarning('Conditions not met for starting refresh cycle');
@@ -512,13 +603,16 @@ class XSpaceAutoRefresh {
         this.stopRefreshCycle();
         return;
       }
+      this.logInfo('DEBUG: Executing scheduled refresh action');
       this.performRefreshActions();
     }, this.refreshIntervalMs);
 
     this.logInfo('Refresh cycle started with interval:', this.refreshIntervalMs + 'ms');
-  }  /**
+  }/**
    * Perform refresh actions: scroll and sort replies
    * Includes condition checks before and after each action
+   * First refresh cycle: scroll + go to top + buttons
+   * Subsequent cycles: buttons only
    */
   async performRefreshActions() {
     try {
@@ -536,33 +630,92 @@ class XSpaceAutoRefresh {
         return;
       }
 
-      this.logInfo(`Performing refresh actions (Reply count: ${replyCount})`);
+      // Debug log for first refresh flag
+      this.logInfo(`DEBUG: isFirstRefresh = ${this.isFirstRefresh}`);
 
-      // Step 1: Scroll down
-      await this.performScrollAction();
-      
-      // Step 2: Click reply settings button
-      await this.performReplySettingsClick();
-      
-      // Step 3: Click latest sort button
-      await this.performLatestSortClick();
+      if (this.isFirstRefresh) {
+        this.logInfo(`Performing FIRST refresh actions (Reply count: ${replyCount}) - including scroll and go to top`);
+        
+        // Step 1: Scroll down
+        this.logInfo('DEBUG: Starting scroll down action');
+        await this.performScrollAction();
+        
+        // Step 2: Go to top of page
+        this.logInfo('DEBUG: Starting go to top action');
+        await this.performGoToTopAction();
+        
+        // Step 3: Click reply settings button
+        this.logInfo('DEBUG: Starting reply settings click');
+        await this.performReplySettingsClick();
+        
+        // Step 4: Click latest sort button
+        this.logInfo('DEBUG: Starting latest sort click');
+        await this.performLatestSortClick();
+        
+        // Mark first refresh as completed
+        this.isFirstRefresh = false;
+        this.logInfo('DEBUG: First refresh completed, isFirstRefresh set to false');
+      } else {
+        this.logInfo(`Performing SUBSEQUENT refresh actions (Reply count: ${replyCount}) - buttons only`);
+        
+        // Subsequent cycles: buttons only
+        // Step 1: Click reply settings button
+        await this.performReplySettingsClick();
+        
+        // Step 2: Click latest sort button
+        await this.performLatestSortClick();
+      }
 
     } catch (error) {
       this.logError('Error performing refresh actions:', error);
     }
-  }
-
-  /**
+  }  /**
    * Perform scroll action with condition checking
    */
   async performScrollAction() {
     // Scroll down by configured amount
-    window.scrollBy(0, XSpaceAutoRefresh.CONSTANTS.SCROLL_AMOUNT);
-    this.logInfo(`Scrolled ${XSpaceAutoRefresh.CONSTANTS.SCROLL_AMOUNT}px`);
+    const scrollAmount = XSpaceAutoRefresh.CONSTANTS.SCROLL_AMOUNT;
+    const beforeScroll = window.pageYOffset;
+    
+    window.scrollBy(0, scrollAmount);
+    this.logInfo(`Scrolled ${scrollAmount}px (before: ${beforeScroll}px)`);
+
+    // Wait for scroll to complete
+    await this.sleep(300);
+    
+    const afterScroll = window.pageYOffset;
+    this.logInfo(`Scroll completed (after: ${afterScroll}px, difference: ${afterScroll - beforeScroll}px)`);
 
     // Check conditions after scroll
     if (!this.shouldStartRefreshCycle()) {
       this.logInfo('Conditions changed after scroll, stopping');
+      this.stopRefreshCycle();
+      return false;
+    }
+    
+    return true;
+  }
+  /**
+   * Perform go to top action with condition checking
+   * Scrolls to the top of the page to ensure proper view for subsequent actions
+   */
+  async performGoToTopAction() {
+    // Get current scroll position
+    const beforeScroll = window.pageYOffset;
+    
+    // Scroll to top of page
+    window.scrollTo(0, 0);
+    this.logInfo(`Scrolled to top of page (before: ${beforeScroll}px)`);
+
+    // Wait a moment for scroll to complete
+    await this.sleep(500);
+    
+    const afterScroll = window.pageYOffset;
+    this.logInfo(`Go to top completed (after: ${afterScroll}px)`);
+
+    // Check conditions after scroll to top
+    if (!this.shouldStartRefreshCycle()) {
+      this.logInfo('Conditions changed after scroll to top, stopping');
       this.stopRefreshCycle();
       return false;
     }

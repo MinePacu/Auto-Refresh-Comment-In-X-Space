@@ -22,13 +22,12 @@
     <hr class="divider" />
 
     <!-- 기능 컨테이너 -->
-    <div class="feature-container">
-      <div class="setting-group">
+    <div class="feature-container">      <div class="setting-group">
         <h3 class="setting-title">새로고침 주기</h3>
-        <p class="setting-description">답글 목록을 얼마나 자주 새로고침할지 설정합니다 (초 단위).</p>
+        <p class="setting-description">답글 목록을 얼마나 자주 새로고침할지 설정합니다 (초 단위). X Rate Limit 정책에 따라 최소 8초 이상이어야 합니다.</p>
         <div class="refresh-interval-setting" style="margin-bottom: 10px;">
           <label for="refreshInterval">주기(초):</label>
-          <input type="number" id="refreshInterval" min="1" max="3600" value="10" style="width:60px;" />
+          <input type="number" id="refreshInterval" min="8" max="3600" value="10" style="width:60px;" title="최소 8초 (X Rate Limit: 150 requests/15min)" />
           <button id="applyRefreshIntervalBtn" class="button" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;">적용</button>
         </div>
       </div>
