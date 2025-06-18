@@ -13,12 +13,16 @@ import './popup.css';
       if (tabs[0]?.id) {
         currentTabId = tabs[0].id;
         callback(currentTabId);
+      } else {
+        console.warn('No active tab found');
+        callback(null);
       }
     });
   }
 
   function getTabSetting(key, defaultValue, callback) {
     if (!currentTabId) {
+      console.warn('No current tab ID available for getting setting:', key);
       callback(defaultValue);
       return;
     }
@@ -32,6 +36,7 @@ import './popup.css';
 
   function setTabSetting(key, value) {
     if (!currentTabId) {
+      console.warn('No current tab ID available for setting:', key);
       return;
     }
     
@@ -235,14 +240,14 @@ import './popup.css';
 
   function sendMessageToContentScript(type, payload, callback) {
     if (!currentTabId) {
-      console.warn('No current tab ID available');
+      console.warn('No current tab ID available for sending message:', type);
       if (callback) callback({ status: 'error', message: 'No tab ID' });
       return;
     }
     
     chrome.tabs.sendMessage(currentTabId, { type, payload }, (response) => {
       if (chrome.runtime.lastError) {
-        console.warn('Error sending message to content script:', chrome.runtime.lastError);
+        console.warn('Error sending message to content script:', chrome.runtime.lastError.message);
         if (callback) callback({ status: 'error', message: chrome.runtime.lastError.message });
       } else {
         if (callback) callback(response);
@@ -252,11 +257,16 @@ import './popup.css';
 
   document.addEventListener('DOMContentLoaded', () => {
     // 현재 탭 ID를 먼저 가져온 후 초기화
-    getCurrentTabId(() => {
-      setupMasterToggle();
-      setupRefreshInterval();
-      setupClickDelay();
-      setupDarkModeToggle();
+    getCurrentTabId((tabId) => {
+      if (tabId) {
+        console.log('Popup initialized for tab:', tabId);
+        setupMasterToggle();
+        setupRefreshInterval();
+        setupClickDelay();
+        setupDarkModeToggle();
+      } else {
+        console.error('Failed to get current tab ID');
+      }
     });
   });
 })();

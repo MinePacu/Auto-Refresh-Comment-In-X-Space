@@ -14,6 +14,21 @@ chrome.runtime.onInstalled.addListener(details => {
   }
 });
 
+// Content Script가 로드될 때 실제 탭 ID를 전달
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // 페이지 로딩이 완료되었을 때
+  if (changeInfo.status === 'complete' && tab.url) {
+    // Content Script에 실제 탭 ID 전달
+    chrome.tabs.sendMessage(tabId, {
+      type: 'TAB_ID_UPDATE',
+      payload: { tabId: tabId }
+    }).catch(() => {
+      // Content Script가 아직 로드되지 않았거나 지원하지 않는 페이지일 수 있음
+      // 에러를 무시함
+    });
+  }
+});
+
 // 탭이 닫힐 때 해당 탭의 설정 정리
 chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
   // 해당 탭의 설정들을 정리
@@ -36,7 +51,21 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // 메시지 처리 로직은 필요에 따라 추가
-  sendResponse({ status: 'Background script received message' });
+  const { type, payload } = request;
+  
+  switch (type) {
+    case 'GET_TAB_ID':
+      // Content Script가 요청할 때 탭 ID 반환
+      if (sender.tab && sender.tab.id) {
+        sendResponse({ status: 'success', tabId: sender.tab.id });
+      } else {
+        sendResponse({ status: 'error', message: 'No tab ID available' });
+      }
+      break;
+      
+    default:
+      sendResponse({ status: 'Background script received message' });
+  }
+  
   return true;
 });
