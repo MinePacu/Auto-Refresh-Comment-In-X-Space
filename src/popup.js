@@ -341,11 +341,11 @@ import './popup.css';
             statusMessage = '비활성';
             loadingSpinner.style.display = 'none';
           } else if (!data.isOnXSite) {
-            statusMessage = 'X 사이트가 아님';
+            statusMessage = 'X(트위터) 접속 대기 중';
           } else if (!data.isOnSpaceTweet) {
-            statusMessage = '스페이스 트윗이 아님';
+            statusMessage = '스페이스 트윗 대기 중';
           } else if (!data.isListeningToSpace) {
-            statusMessage = '스페이스 청취 중이 아님';
+            statusMessage = '스페이스 청취 대기 중';
           } else {
             statusMessage = `활성 중 (답글: ${data.replyCount}개)`;
           }
