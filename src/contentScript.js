@@ -65,7 +65,8 @@ class XSpaceAutoRefresh {
   /**
    * Initialize the extension
    * Sets up tab ID, loads settings, and registers message listeners
-   */  initialize() {
+   */  
+  initialize() {
     this.setupMessageListeners();
     this.requestTabIdFromBackground();
     this.loadDebugLogSetting();
@@ -302,6 +303,7 @@ class XSpaceAutoRefresh {
     
     sendResponse({ status: 'success' });
   }
+
   /**
    * Handle refresh interval setting message
    * @param {Object} payload - Message payload
@@ -399,7 +401,8 @@ class XSpaceAutoRefresh {
   /**
    * Handle status request message
    * @param {Function} sendResponse - Response callback
-   */  handleGetStatus(sendResponse) {
+   */  
+  handleGetStatus(sendResponse) {
     const status = this.getCurrentStatus();
     this.logInfo('Sending status:', status);
     sendResponse({ status: 'success', data: status });
@@ -528,6 +531,7 @@ class XSpaceAutoRefresh {
            this.isOnSpaceTweet() && 
            this.isListeningToSpace();
   }
+
   /**
    * Stop the refresh cycle
    */
@@ -601,6 +605,7 @@ class XSpaceAutoRefresh {
     const replies = document.querySelectorAll('[data-testid="tweetText"]');
     return replies.length;
   }
+
   // ================================
   // REFRESH CYCLE MANAGEMENT
   // ================================
@@ -642,7 +647,9 @@ class XSpaceAutoRefresh {
     }, this.refreshIntervalMs);
 
     this.logInfo('Refresh cycle started with interval:', this.refreshIntervalMs + 'ms');
-  }/**
+  }
+  
+  /**
    * Perform refresh actions: scroll and sort replies
    * Includes condition checks before and after each action
    * First refresh cycle: scroll + go to top + buttons
@@ -729,6 +736,7 @@ class XSpaceAutoRefresh {
     
     return true;
   }
+  
   /**
    * Perform go to top action with condition checking
    * Scrolls to the top of the page to ensure proper view for subsequent actions
