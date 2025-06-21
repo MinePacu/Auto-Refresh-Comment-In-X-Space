@@ -31,7 +31,8 @@ class XSpaceAutoRefresh {
     
     // XPath selectors for X (Twitter) elements
     XPATHS: {
-      spaceParticipationStatus: '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/button/div/div[4]/button/div/span/span',
+      spaceRecordingParticipationStatus: '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/button/div/div[4]/button/div/span/span',
+      spaceParticipationStatus: '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/div/div/div[3]/a/div/span/span',
       replySettingsButton: '//*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[1]/div[1]/div/div/div/div/div/div[3]/div/button[2]',
       latestSortButton: '//*[@id="layers"]/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div[3]'
     },
@@ -380,7 +381,8 @@ class XSpaceAutoRefresh {
    * Handle click delay setting message
    * @param {Object} payload - Message payload
    * @param {Function} sendResponse - Response callback
-   */  handleSetClickDelay(payload, sendResponse) {
+   */
+  handleSetClickDelay(payload, sendResponse) {
     let delay = payload.delay;
     
     // 최솟값 검증
@@ -572,10 +574,18 @@ class XSpaceAutoRefresh {
     }
 
     // Must have Space-related elements
-    const spaceElement = this.getElementByXPath(
+    const liveSpaceElement = this.getElementByXPath(
       XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus
     );
-    return spaceElement !== null;
+
+    let recordSpaceElement = null;
+    if (!liveSpaceElement && this.debugLogEnabled) {
+      recordSpaceElement = this.getElementByXPath(
+        XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus
+      );
+      this.logInfo('DEBUG: Record Space element found:', recordSpaceElement !== null);
+    }
+    return liveSpaceElement !== null || recordSpaceElement !== null;
   }
 
   /**
@@ -586,11 +596,26 @@ class XSpaceAutoRefresh {
     const element = this.getElementByXPath(
       XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus
     );
+
+    let recordElement = null;
+    if (!element && this.debugLogEnabled) {
+      recordElement = this.getElementByXPath(XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus);
+      this.logInfo('DEBUG: Record Space participation element found:', recordElement !== null); 
+
+      if (!recordElement) {
+        return false;
+      }
+
+      const recordtext = recordElement.textContent.trim();
+      const { PARTICIPATING, PAUSED } = XSpaceAutoRefresh.CONSTANTS.PARTICIPATION_TEXTS;
+
+      return recordtext === PARTICIPATING || recordtext === PAUSED;
+    }
     
     if (!element) {
       return false;
     }
-    
+
     const text = element.textContent.trim();
     const { PARTICIPATING, PAUSED } = XSpaceAutoRefresh.CONSTANTS.PARTICIPATION_TEXTS;
     
