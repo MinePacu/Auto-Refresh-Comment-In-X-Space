@@ -218,10 +218,12 @@ class XSpaceAutoRefresh {
           this.handleSetClickDelay(payload, sendResponse);
           break;        case 'GET_STATUS':
           this.handleGetStatus(sendResponse);
+          break;        case 'SET_DEBUG_LOG':
+          this.handleSetDebugLog(payload, sendResponse);
           break;
 
-        case 'SET_DEBUG_LOG':
-          this.handleSetDebugLog(payload, sendResponse);
+        case 'SETTINGS_UPDATED':
+          this.handleSettingsUpdated(payload, sendResponse);
           break;
 
         default:
@@ -384,11 +386,10 @@ class XSpaceAutoRefresh {
    */
   handleSetClickDelay(payload, sendResponse) {
     let delay = payload.delay;
-    
-    // 최솟값 검증
-    if (delay < 1) {
-      delay = 1;
-      this.logWarning(`Click delay adjusted from ${payload.delay}ms to ${delay}ms (minimum: 1ms)`);
+      // 최솟값 검증
+    if (delay < 5) {
+      delay = 5;
+      this.logWarning(`Click delay adjusted from ${payload.delay}ms to ${delay}ms (minimum: 5ms)`);
     }
     
     this.clickDelayMs = delay;
@@ -418,6 +419,60 @@ class XSpaceAutoRefresh {
   handleSetDebugLog(payload, sendResponse) {
     this.debugLogEnabled = payload.enabled;
     this.logInfo('Debug log setting updated:', this.debugLogEnabled);
+    sendResponse({ status: 'success' });
+  }
+
+  /**
+   * Handle settings update broadcast from background script
+   * @param {Object} payload - Message payload containing updated settings
+   * @param {Function} sendResponse - Response callback
+   */
+  handleSettingsUpdated(payload, sendResponse) {
+    const { settings } = payload;
+    
+    this.logInfo('Received settings update from background script:', settings);
+    
+    // 새로고침 주기 업데이트
+    if (settings.refreshInterval !== undefined) {
+      const newIntervalMs = settings.refreshInterval * 1000;
+      const validatedInterval = this.validateRefreshInterval(newIntervalMs);
+      
+      if (this.refreshIntervalMs !== validatedInterval) {
+        this.refreshIntervalMs = validatedInterval;
+        this.logInfo('Updated refresh interval to:', this.refreshIntervalMs);
+        
+        // 활성 상태라면 새로고침 주기 재시작
+        this.restartRefreshCycleIfNeeded();
+      }
+    }
+    
+    // 클릭 간 대기시간 업데이트
+    if (settings.clickDelayMs !== undefined) {
+      let delay = settings.clickDelayMs;
+        // 최솟값 검증
+      if (delay < 5) {
+        delay = 5;
+      }
+      
+      if (this.clickDelayMs !== delay) {
+        this.clickDelayMs = delay;
+        this.logInfo('Updated click delay to:', this.clickDelayMs);
+      }
+    }
+    
+    // 디버그 로그 설정 업데이트
+    if (settings.debugLogEnabled !== undefined) {
+      if (this.debugLogEnabled !== settings.debugLogEnabled) {
+        this.debugLogEnabled = settings.debugLogEnabled;
+        this.logInfo('Updated debug log setting to:', this.debugLogEnabled);
+      }
+    }
+    
+    // 테마 설정은 contentScript에서 직접 처리하지 않으므로 로그만 출력
+    if (settings.theme !== undefined) {
+      this.logInfo('Theme setting updated to:', settings.theme);
+    }
+    
     sendResponse({ status: 'success' });
   }
 

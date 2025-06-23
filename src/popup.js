@@ -167,26 +167,22 @@ import './popup.css';
   // 클릭 간 대기 시간 설정
   function setupClickDelay() {
     const input = document.getElementById('clickDelay');
-    const applyBtn = document.getElementById('applyClickDelayBtn');
-
-    // 최솟값과 툴팁 설정
-    input.min = 1;
-    input.title = '최소 1ms';
+    const applyBtn = document.getElementById('applyClickDelayBtn');    // 최솟값과 툴팁 설정
+    input.min = 5;
+    input.title = '최소 5ms';
 
     // 저장된 값 불러오기
     chrome.storage.sync.get(['clickDelayMs'], result => {
       if (typeof result.clickDelayMs === 'number') {
         input.value = result.clickDelayMs;
       }
-    });
-
-    // 값 변경 시 유효성 검사 및 저장
+    });    // 값 변경 시 유효성 검사 및 저장
     input.addEventListener('change', () => {
       let value = parseInt(input.value, 10);
       const originalValue = value;
       
-      if (isNaN(value) || value < 1) {
-        value = 1;
+      if (isNaN(value) || value < 5) {
+        value = 5;
       }
       if (value > 10000) {
         value = 10000;
@@ -200,13 +196,12 @@ import './popup.css';
       
       chrome.storage.sync.set({ clickDelayMs: value });
     });
-    
-    applyBtn.addEventListener('click', () => {
+      applyBtn.addEventListener('click', () => {
       let value = parseInt(input.value, 10);
       const originalValue = value;
       
-      if (isNaN(value) || value < 1) {
-        value = 1;
+      if (isNaN(value) || value < 5) {
+        value = 5;
       }
       if (value > 10000) {
         value = 10000;

@@ -51,6 +51,43 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
   });
 });
 
+// Storage 변경 감지 및 다른 탭들에 브로드캐스트
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'sync') {
+    // 전역 설정 변경 감지 (새로고침 주기, 클릭 간 대기시간, 테마, 디버그 로그)
+    const globalSettings = ['refreshInterval', 'clickDelayMs', 'theme', 'debugLogEnabled'];
+    const changedGlobalSettings = {};
+    
+    for (const [key, { oldValue, newValue }] of Object.entries(changes)) {
+      if (globalSettings.includes(key)) {
+        changedGlobalSettings[key] = newValue;
+      }
+    }
+    
+    // 전역 설정이 변경된 경우 모든 탭에 브로드캐스트
+    if (Object.keys(changedGlobalSettings).length > 0) {
+      broadcastSettingsToAllTabs(changedGlobalSettings);
+    }
+  }
+});
+
+// 모든 탭에 설정 변경 사항 브로드캐스트
+function broadcastSettingsToAllTabs(settings) {
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach(tab => {
+      if (tab.url && (tab.url.includes('x.com') || tab.url.includes('twitter.com'))) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'SETTINGS_UPDATED',
+          payload: { settings }
+        }).catch(() => {
+          // Content Script가 로드되지 않았거나 지원하지 않는 페이지일 수 있음
+          // 에러를 무시함
+        });
+      }
+    });
+  });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { type, payload } = request;
   
