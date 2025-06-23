@@ -50,14 +50,76 @@ import './popup.css';
 
   // To get storage access, we have to mention it in `permissions` property of manifest.json file
   // More information on Permissions can we found at
-  // https://developer.chrome.com/extensions/declare_permissions
-    // X Rate Limit 관련 상수
+  // https://developer.chrome.com/extensions/declare_permissions    // X Rate Limit 관련 상수
   const X_RATE_LIMIT_CONFIG = {
     MIN_REFRESH_INTERVAL_SECONDS: 8,  // 최소 8초 (content script의 7.2초보다 약간 여유있게)
     MAX_REFRESH_INTERVAL_SECONDS: 3600, // 최대 1시간
     RATE_LIMIT_INFO: 'X Rate Limit: 150 requests/15min'
   };
 
+  // 클릭 간 대기시간 관련 상수  
+  const CLICK_DELAY_CONFIG = {
+    MIN_CLICK_DELAY: 5,  // 최소 5ms
+    MAX_CLICK_DELAY: 10000, // 최대 10초
+    DEFAULT_CLICK_DELAY: 700 // 기본 700ms
+  };
+
+  // 유효성 검사 유틸리티 함수들
+  function validateRefreshInterval(value) {
+    const numValue = parseInt(value, 10);
+    if (isNaN(numValue)) {
+      return { 
+        value: X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS, 
+        adjusted: true,
+        reason: 'Invalid number' 
+      };
+    }
+    
+    const originalValue = numValue;
+    let adjustedValue = numValue;
+    let adjusted = false;
+    let reason = '';
+    
+    if (numValue < X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS) {
+      adjustedValue = X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS;
+      adjusted = true;
+      reason = `Below minimum (${X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS}s)`;
+    } else if (numValue > X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS) {
+      adjustedValue = X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS;
+      adjusted = true;
+      reason = `Above maximum (${X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS}s)`;
+    }
+    
+    return { value: adjustedValue, adjusted, reason, originalValue };
+  }
+
+  function validateClickDelay(value) {
+    const numValue = parseInt(value, 10);
+    if (isNaN(numValue)) {
+      return { 
+        value: CLICK_DELAY_CONFIG.MIN_CLICK_DELAY, 
+        adjusted: true,
+        reason: 'Invalid number' 
+      };
+    }
+    
+    const originalValue = numValue;
+    let adjustedValue = numValue;
+    let adjusted = false;
+    let reason = '';
+    
+    if (numValue < CLICK_DELAY_CONFIG.MIN_CLICK_DELAY) {
+      adjustedValue = CLICK_DELAY_CONFIG.MIN_CLICK_DELAY;
+      adjusted = true;
+      reason = `Below minimum (${CLICK_DELAY_CONFIG.MIN_CLICK_DELAY}ms)`;
+    } else if (numValue > CLICK_DELAY_CONFIG.MAX_CLICK_DELAY) {
+      adjustedValue = CLICK_DELAY_CONFIG.MAX_CLICK_DELAY;
+      adjusted = true;
+      reason = `Above maximum (${CLICK_DELAY_CONFIG.MAX_CLICK_DELAY}ms)`;
+    }
+    
+    return { value: adjustedValue, adjusted, reason, originalValue };
+  }
   // 새로고침 주기 저장 및 복원
   function setupRefreshInterval() {
     const input = document.getElementById('refreshInterval');
@@ -77,60 +139,45 @@ import './popup.css';
 
     // 값 변경 시 유효성 검사 및 저장
     input.addEventListener('change', () => {
-      let value = parseInt(input.value, 10);
-      const originalValue = value;
+      const validation = validateRefreshInterval(input.value);
+      input.value = validation.value; // 검증된 값으로 업데이트
       
-      if (isNaN(value) || value < X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS) {
-        value = X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS;
-      }
-      if (value > X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS) {
-        value = X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS;
+      if (validation.adjusted) {
+        showRateLimitWarning(validation.originalValue, validation.value, validation.reason);
       }
       
-      input.value = value; // Ensure input reflects validated value
-      
-      if (originalValue !== value) {
-        showRateLimitWarning(originalValue, value);
-      }
-      
-      chrome.storage.sync.set({ refreshInterval: value });
+      // 스토리지에 저장
+      chrome.storage.sync.set({ refreshInterval: validation.value });
     });
 
     // "적용" 버튼 클릭 시 contentScript로 전송
     applyBtn.addEventListener('click', () => {
-      let value = parseInt(input.value, 10);
-      const originalValue = value;
-      
-      if (isNaN(value) || value < X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS) {
-        value = X_RATE_LIMIT_CONFIG.MIN_REFRESH_INTERVAL_SECONDS;
-      }
-      if (value > X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS) {
-        value = X_RATE_LIMIT_CONFIG.MAX_REFRESH_INTERVAL_SECONDS;
-      }
-      
-      input.value = value; // Ensure input reflects validated value before sending
+      const validation = validateRefreshInterval(input.value);
+      input.value = validation.value; // 검증된 값으로 업데이트
 
-      if (originalValue !== value) {
-        showRateLimitWarning(originalValue, value);
+      if (validation.adjusted) {
+        showRateLimitWarning(validation.originalValue, validation.value, validation.reason);
       }
 
       // 먼저 storage에 저장
-      chrome.storage.sync.set({ refreshInterval: value }, () => {
+      chrome.storage.sync.set({ refreshInterval: validation.value }, () => {
         // contentScript에 직접 메시지 전달
-        sendMessageToContentScript('SET_REFRESH_INTERVAL', { interval: value }, (response) => {
+        sendMessageToContentScript('SET_REFRESH_INTERVAL', { interval: validation.value }, (response) => {
           if (response && response.status === 'adjusted') {
             // Content script에서 추가 조정이 있었을 경우
             input.value = response.adjustedInterval;
             showAdjustmentMessage(response.message);
+          } else if (response && response.status === 'error') {
+            console.error('Error setting refresh interval:', response.message);
           }
         });
       });
     });
   }
-
   // Rate Limit 경고 메시지 표시
-  function showRateLimitWarning(originalValue, adjustedValue) {
-    const message = `새로고침 간격이 ${originalValue}초에서 ${adjustedValue}초로 조정되었습니다.\n(${X_RATE_LIMIT_CONFIG.RATE_LIMIT_INFO})`;
+  function showRateLimitWarning(originalValue, adjustedValue, reason = '') {
+    const reasonText = reason ? ` (${reason})` : ` (${X_RATE_LIMIT_CONFIG.RATE_LIMIT_INFO})`;
+    const message = `새로고침 간격이 ${originalValue}초에서 ${adjustedValue}초로 조정되었습니다.${reasonText}`;
     console.warn(message);
     
     // 임시 메시지 표시 (선택적)
@@ -163,66 +210,57 @@ import './popup.css';
       }, 3000);
     }
   }
-
   // 클릭 간 대기 시간 설정
   function setupClickDelay() {
     const input = document.getElementById('clickDelay');
-    const applyBtn = document.getElementById('applyClickDelayBtn');    // 최솟값과 툴팁 설정
-    input.min = 5;
-    input.title = '최소 5ms';
+    const applyBtn = document.getElementById('applyClickDelayBtn');
+
+    // 최솟값과 툴팁 설정
+    input.min = CLICK_DELAY_CONFIG.MIN_CLICK_DELAY;
+    input.max = CLICK_DELAY_CONFIG.MAX_CLICK_DELAY;
+    input.title = `최소 ${CLICK_DELAY_CONFIG.MIN_CLICK_DELAY}ms`;
 
     // 저장된 값 불러오기
     chrome.storage.sync.get(['clickDelayMs'], result => {
       if (typeof result.clickDelayMs === 'number') {
         input.value = result.clickDelayMs;
       }
-    });    // 값 변경 시 유효성 검사 및 저장
-    input.addEventListener('change', () => {
-      let value = parseInt(input.value, 10);
-      const originalValue = value;
-      
-      if (isNaN(value) || value < 5) {
-        value = 5;
-      }
-      if (value > 10000) {
-        value = 10000;
-      }
-      
-      input.value = value; // Ensure input reflects validated value
-      
-      if (originalValue !== value) {
-        showClickDelayAdjustment(originalValue, value);
-      }
-      
-      chrome.storage.sync.set({ clickDelayMs: value });
     });
-      applyBtn.addEventListener('click', () => {
-      let value = parseInt(input.value, 10);
-      const originalValue = value;
-      
-      if (isNaN(value) || value < 5) {
-        value = 5;
-      }
-      if (value > 10000) {
-        value = 10000;
-      }
-      
-      input.value = value; // 최종 검증된 값으로 input 업데이트
 
-      if (originalValue !== value) {
-        showClickDelayAdjustment(originalValue, value);
+    // 값 변경 시 유효성 검사 및 저장
+    input.addEventListener('change', () => {
+      const validation = validateClickDelay(input.value);
+      input.value = validation.value; // 검증된 값으로 업데이트
+      
+      if (validation.adjusted) {
+        showClickDelayAdjustment(validation.originalValue, validation.value, validation.reason);
+      }
+      
+      chrome.storage.sync.set({ clickDelayMs: validation.value });
+    });
+
+    applyBtn.addEventListener('click', () => {
+      const validation = validateClickDelay(input.value);
+      input.value = validation.value; // 최종 검증된 값으로 input 업데이트
+
+      if (validation.adjusted) {
+        showClickDelayAdjustment(validation.originalValue, validation.value, validation.reason);
       }
 
-      chrome.storage.sync.set({ clickDelayMs: value }, () => {
+      chrome.storage.sync.set({ clickDelayMs: validation.value }, () => {
         // contentScript에 직접 메시지 전달
-        sendMessageToContentScript('SET_CLICK_DELAY', { delay: value });
+        sendMessageToContentScript('SET_CLICK_DELAY', { delay: validation.value }, (response) => {
+          if (response && response.status === 'error') {
+            console.error('Error setting click delay:', response.message);
+          }
+        });
       });
     });
   }
-
   // 클릭 간 대기시간 조정 메시지 표시
-  function showClickDelayAdjustment(originalValue, adjustedValue) {
-    const message = `클릭 간 대기시간이 ${originalValue}ms에서 ${adjustedValue}ms로 조정되었습니다.`;
+  function showClickDelayAdjustment(originalValue, adjustedValue, reason = '') {
+    const reasonText = reason ? ` (${reason})` : '';
+    const message = `클릭 간 대기시간이 ${originalValue}ms에서 ${adjustedValue}ms로 조정되었습니다.${reasonText}`;
     console.warn(message);
     
     const statusText = document.getElementById('statusText');

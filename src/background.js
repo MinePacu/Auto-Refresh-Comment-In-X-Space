@@ -57,15 +57,21 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     // 전역 설정 변경 감지 (새로고침 주기, 클릭 간 대기시간, 테마, 디버그 로그)
     const globalSettings = ['refreshInterval', 'clickDelayMs', 'theme', 'debugLogEnabled'];
     const changedGlobalSettings = {};
+    let hasGlobalChanges = false;
     
     for (const [key, { oldValue, newValue }] of Object.entries(changes)) {
       if (globalSettings.includes(key)) {
-        changedGlobalSettings[key] = newValue;
+        // 값이 실제로 변경된 경우만 브로드캐스트 (무한 루프 방지)
+        if (oldValue !== newValue) {
+          changedGlobalSettings[key] = newValue;
+          hasGlobalChanges = true;
+        }
       }
     }
     
-    // 전역 설정이 변경된 경우 모든 탭에 브로드캐스트
-    if (Object.keys(changedGlobalSettings).length > 0) {
+    // 전역 설정이 실제로 변경된 경우만 모든 탭에 브로드캐스트
+    if (hasGlobalChanges) {
+      console.log('Broadcasting global settings changes:', changedGlobalSettings);
       broadcastSettingsToAllTabs(changedGlobalSettings);
     }
   }

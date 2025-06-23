@@ -41,8 +41,7 @@ class XSpaceAutoRefresh {
     PARTICIPATION_TEXTS: {
       PARTICIPATING: '참여했습니다',
       PAUSED: '일시 정지'
-    }
-  };
+    }  };
   // ================================
   // CONSTRUCTOR AND INITIALIZATION
   // ================================
@@ -59,6 +58,15 @@ class XSpaceAutoRefresh {
     
     // 디버그 로그 설정
     this.debugLogEnabled = false;
+    
+    // 액션 실행 중 플래그 (race condition 방지)
+    this.isPerformingActions = false;
+    
+    // 페이지 언로드 시 정리를 위한 바인딩
+    this.boundCleanup = this.cleanup.bind(this);
+    
+    // 페이지 언로드 시 정리 이벤트 등록
+    window.addEventListener('beforeunload', this.boundCleanup);
 
     this.initialize();
   }
@@ -421,7 +429,6 @@ class XSpaceAutoRefresh {
     this.logInfo('Debug log setting updated:', this.debugLogEnabled);
     sendResponse({ status: 'success' });
   }
-
   /**
    * Handle settings update broadcast from background script
    * @param {Object} payload - Message payload containing updated settings
@@ -432,6 +439,8 @@ class XSpaceAutoRefresh {
     
     this.logInfo('Received settings update from background script:', settings);
     
+    let hasChanges = false;
+    
     // 새로고침 주기 업데이트
     if (settings.refreshInterval !== undefined) {
       const newIntervalMs = settings.refreshInterval * 1000;
@@ -440,6 +449,7 @@ class XSpaceAutoRefresh {
       if (this.refreshIntervalMs !== validatedInterval) {
         this.refreshIntervalMs = validatedInterval;
         this.logInfo('Updated refresh interval to:', this.refreshIntervalMs);
+        hasChanges = true;
         
         // 활성 상태라면 새로고침 주기 재시작
         this.restartRefreshCycleIfNeeded();
@@ -449,7 +459,7 @@ class XSpaceAutoRefresh {
     // 클릭 간 대기시간 업데이트
     if (settings.clickDelayMs !== undefined) {
       let delay = settings.clickDelayMs;
-        // 최솟값 검증
+      // 최솟값 검증
       if (delay < 5) {
         delay = 5;
       }
@@ -457,6 +467,7 @@ class XSpaceAutoRefresh {
       if (this.clickDelayMs !== delay) {
         this.clickDelayMs = delay;
         this.logInfo('Updated click delay to:', this.clickDelayMs);
+        hasChanges = true;
       }
     }
     
@@ -465,12 +476,18 @@ class XSpaceAutoRefresh {
       if (this.debugLogEnabled !== settings.debugLogEnabled) {
         this.debugLogEnabled = settings.debugLogEnabled;
         this.logInfo('Updated debug log setting to:', this.debugLogEnabled);
+        hasChanges = true;
       }
     }
     
     // 테마 설정은 contentScript에서 직접 처리하지 않으므로 로그만 출력
     if (settings.theme !== undefined) {
       this.logInfo('Theme setting updated to:', settings.theme);
+    }
+    
+    // 변경사항이 있을 때만 응답
+    if (hasChanges) {
+      this.logInfo('Settings updated successfully');
     }
     
     sendResponse({ status: 'success' });
@@ -728,15 +745,22 @@ class XSpaceAutoRefresh {
 
     this.logInfo('Refresh cycle started with interval:', this.refreshIntervalMs + 'ms');
   }
-  
-  /**
+    /**
    * Perform refresh actions: scroll and sort replies
    * Includes condition checks before and after each action
    * First refresh cycle: scroll + go to top + buttons
    * Subsequent cycles: buttons only
    */
   async performRefreshActions() {
+    // Race condition 방지: 이미 액션이 실행 중이면 건너뛰기
+    if (this.isPerformingActions) {
+      this.logInfo('Actions already in progress, skipping this cycle');
+      return;
+    }
+    
     try {
+      this.isPerformingActions = true;
+      
       // Pre-action condition check
       if (!this.shouldStartRefreshCycle()) {
         this.logInfo('Conditions no longer met during refresh actions, stopping');
@@ -759,15 +783,18 @@ class XSpaceAutoRefresh {
         
         // Step 1: Scroll down
         this.logInfo('DEBUG: Starting scroll down action');
-        await this.performScrollAction();
+        const scrollSuccess = await this.performScrollAction();
+        if (!scrollSuccess) return;
         
         // Step 2: Go to top of page
         this.logInfo('DEBUG: Starting go to top action');
-        await this.performGoToTopAction();
+        const topSuccess = await this.performGoToTopAction();
+        if (!topSuccess) return;
         
         // Step 3: Click reply settings button
         this.logInfo('DEBUG: Starting reply settings click');
-        await this.performReplySettingsClick();
+        const replySuccess = await this.performReplySettingsClick();
+        if (!replySuccess) return;
         
         // Step 4: Click latest sort button
         this.logInfo('DEBUG: Starting latest sort click');
@@ -781,7 +808,8 @@ class XSpaceAutoRefresh {
         
         // Subsequent cycles: buttons only
         // Step 1: Click reply settings button
-        await this.performReplySettingsClick();
+        const replySuccess = await this.performReplySettingsClick();
+        if (!replySuccess) return;
         
         // Step 2: Click latest sort button
         await this.performLatestSortClick();
@@ -789,8 +817,11 @@ class XSpaceAutoRefresh {
 
     } catch (error) {
       this.logError('Error performing refresh actions:', error);
+    } finally {
+      // 액션 완료 후 플래그 해제
+      this.isPerformingActions = false;
     }
-  }  /**
+  }/**
    * Perform scroll action with condition checking
    */
   async performScrollAction() {
@@ -892,29 +923,37 @@ class XSpaceAutoRefresh {
   // ================================
   // UTILITY METHODS
   // ================================
-
   /**
-   * Get DOM element by XPath
+   * Get DOM element by XPath with error handling
    * @param {string} xpath - XPath expression
    * @returns {Element|null} Found element or null
    */
   getElementByXPath(xpath) {
-    const result = document.evaluate(
-      xpath,
-      document,
-      null,
-      XPathResult.FIRST_ORDERED_NODE_TYPE,
-      null
-    );
-    return result.singleNodeValue;
+    try {
+      const result = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      return result.singleNodeValue;
+    } catch (error) {
+      this.logError('Error evaluating XPath:', xpath, error);
+      return null;
+    }
   }
 
   /**
-   * Sleep for specified milliseconds
+   * Sleep for specified milliseconds with error handling
    * @param {number} ms - Milliseconds to sleep
    * @returns {Promise} Promise that resolves after delay
    */
   sleep(ms) {
+    if (ms < 0 || !Number.isFinite(ms)) {
+      this.logWarning('Invalid sleep duration:', ms, 'using 0ms');
+      ms = 0;
+    }
     return new Promise(resolve => setTimeout(resolve, ms));
   }
   // ================================
@@ -951,6 +990,27 @@ class XSpaceAutoRefresh {
   logError(message, ...args) {
     // 에러는 디버그 로그 설정과 관계없이 항상 출력
     console.error(`[Tab ${this.tabId}] ${message}`, ...args);
+  }
+
+  /**
+   * Cleanup method to prevent memory leaks
+   * Called when page is about to be unloaded
+   */
+  cleanup() {
+    this.logInfo('Cleaning up X Space Auto Refresh...');
+    
+    // 모든 interval 정리
+    this.stopDetection();
+    this.stopRefreshCycle();
+    
+    // 이벤트 리스너 제거
+    if (this.boundCleanup) {
+      window.removeEventListener('beforeunload', this.boundCleanup);
+    }
+    
+    // 플래그 리셋
+    this.isPerformingActions = false;
+    this.isFirstRefresh = true;
   }
 }
 
