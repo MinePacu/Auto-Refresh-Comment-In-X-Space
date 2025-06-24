@@ -173,27 +173,37 @@ import './popup.css';
         });
       });
     });
-  }
-  // Rate Limit 경고 메시지 표시
+  }  // Rate Limit 경고 메시지 표시
   function showRateLimitWarning(originalValue, adjustedValue, reason = '') {
     const reasonText = reason ? ` (${reason})` : ` (${X_RATE_LIMIT_CONFIG.RATE_LIMIT_INFO})`;
     const message = `새로고침 간격이 ${originalValue}초에서 ${adjustedValue}초로 조정되었습니다.${reasonText}`;
     console.warn(message);
     
-    // 임시 메시지 표시 (선택적)
+    // 임시 메시지 표시
     const statusText = document.getElementById('statusText');
     if (statusText) {
-      const originalText = statusText.textContent;
+      // X 도메인이 아닌 경우도 고려하여 원래 텍스트 저장
+      let originalText = statusText.textContent;
+      let originalColor = statusText.style.color;
+      
       statusText.textContent = `조정됨: ${adjustedValue}초`;
       statusText.style.color = '#ff9800';
       
       setTimeout(() => {
-        statusText.textContent = originalText;
-        statusText.style.color = '';
+        // 지원되지 않는 사이트일 경우 상태 텍스트가 변경될 수 있으므로 체크
+        checkIsOnXDomain((isOnXDomain) => {
+          if (!isOnXDomain && originalText === '상태: 알 수 없음') {
+            // 비 X 도메인에서는 "설정 저장됨"으로 표시
+            statusText.textContent = '설정이 저장되었습니다';
+            statusText.style.color = '#4CAF50';
+          } else {
+            statusText.textContent = originalText;
+            statusText.style.color = originalColor;
+          }
+        });
       }, 3000);
     }
   }
-
   // Content Script 조정 메시지 표시
   function showAdjustmentMessage(message) {
     console.info('Content Script adjustment:', message);
@@ -201,12 +211,22 @@ import './popup.css';
     const statusText = document.getElementById('statusText');
     if (statusText) {
       const originalText = statusText.textContent;
+      const originalColor = statusText.style.color;
       statusText.textContent = '간격 조정됨';
       statusText.style.color = '#ff9800';
       
       setTimeout(() => {
-        statusText.textContent = originalText;
-        statusText.style.color = '';
+        // 지원되지 않는 사이트일 경우 상태 텍스트가 변경될 수 있으므로 체크
+        checkIsOnXDomain((isOnXDomain) => {
+          if (!isOnXDomain && originalText === '상태: 알 수 없음') {
+            // 비 X 도메인에서는 "설정 저장됨"으로 표시
+            statusText.textContent = '설정이 저장되었습니다';
+            statusText.style.color = '#4CAF50';
+          } else {
+            statusText.textContent = originalText;
+            statusText.style.color = originalColor;
+          }
+        });
       }, 3000);
     }
   }
@@ -256,8 +276,7 @@ import './popup.css';
         });
       });
     });
-  }
-  // 클릭 간 대기시간 조정 메시지 표시
+  }  // 클릭 간 대기시간 조정 메시지 표시
   function showClickDelayAdjustment(originalValue, adjustedValue, reason = '') {
     const reasonText = reason ? ` (${reason})` : '';
     const message = `클릭 간 대기시간이 ${originalValue}ms에서 ${adjustedValue}ms로 조정되었습니다.${reasonText}`;
@@ -266,12 +285,22 @@ import './popup.css';
     const statusText = document.getElementById('statusText');
     if (statusText) {
       const originalText = statusText.textContent;
+      const originalColor = statusText.style.color;
       statusText.textContent = `조정됨: ${adjustedValue}ms`;
       statusText.style.color = '#ff9800';
       
       setTimeout(() => {
-        statusText.textContent = originalText;
-        statusText.style.color = '';
+        // 지원되지 않는 사이트일 경우 상태 텍스트가 변경될 수 있으므로 체크
+        checkIsOnXDomain((isOnXDomain) => {
+          if (!isOnXDomain && originalText === '상태: 알 수 없음') {
+            // 비 X 도메인에서는 "설정 저장됨"으로 표시
+            statusText.textContent = '설정이 저장되었습니다';
+            statusText.style.color = '#4CAF50';
+          } else {
+            statusText.textContent = originalText;
+            statusText.style.color = originalColor;
+          }
+        });
       }, 3000);
     }
   }
@@ -391,7 +420,6 @@ import './popup.css';
       });
     }
   }
-
   function sendMessageToContentScript(type, payload, callback) {
     if (!currentTabId) {
       console.warn('No current tab ID available for sending message:', type);
@@ -399,13 +427,32 @@ import './popup.css';
       return;
     }
     
-    chrome.tabs.sendMessage(currentTabId, { type, payload }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.warn('Error sending message to content script:', chrome.runtime.lastError.message);
-        if (callback) callback({ status: 'error', message: chrome.runtime.lastError.message });
-      } else {
-        if (callback) callback(response);
+    // 현재 탭이 X 도메인인지 확인
+    checkIsOnXDomain((isOnXDomain, url) => {
+      if (!isOnXDomain) {
+        // X 도메인이 아니면 메시지 전송을 건너뛰고 설정만 저장
+        console.info('Not on X domain, skipping message to content script:', type);
+        
+        // 설정 관련 메시지인 경우 스토리지에 직접 저장
+        if (type === 'SET_REFRESH_INTERVAL' && payload && payload.intervalSeconds) {
+          chrome.storage.sync.set({ refreshInterval: payload.intervalSeconds });
+        } else if (type === 'SET_CLICK_DELAY' && payload && payload.delayMs) {
+          chrome.storage.sync.set({ clickDelayMs: payload.delayMs });
+        }
+        
+        if (callback) callback({ status: 'success', message: 'Settings saved (not on X domain)' });
+        return;
       }
+      
+      // X 도메인인 경우에만 메시지 전송
+      chrome.tabs.sendMessage(currentTabId, { type, payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('Error sending message to content script:', chrome.runtime.lastError.message);
+          if (callback) callback({ status: 'error', message: chrome.runtime.lastError.message });
+        } else {
+          if (callback) callback(response);
+        }
+      });
     });
   }
 
@@ -456,18 +503,96 @@ import './popup.css';
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    // 현재 탭 ID를 먼저 가져온 후 초기화
-    getCurrentTabId((tabId) => {
-      if (tabId) {
-        console.log('Popup initialized for tab:', tabId);
-        setupMasterToggle();
-        setupRefreshInterval();
-        setupClickDelay();
-        setupDarkModeToggle();
-        setupDeveloperOptions();
+  // 현재 탭이 X(트위터) 도메인인지 확인
+  function checkIsOnXDomain(callback) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0 && tabs[0].url) {
+        const url = tabs[0].url;
+        const isOnXDomain = url.includes('x.com') || url.includes('twitter.com');
+        callback(isOnXDomain, url);
       } else {
-        console.error('Failed to get current tab ID');
+        callback(false, '');
+      }
+    });
+  }  // 지원되지 않는 사이트 UI 표시
+  function showUnsupportedSiteUI() {
+    // 마스터 버튼 컨테이너만 변경
+    const masterContainer = document.querySelector('.master-container');
+    if (masterContainer) {
+      // 마스터 버튼 영역에만 지원되지 않는 사이트 메시지 표시
+      masterContainer.innerHTML = `
+        <div style="text-align: center; width: 100%;">
+          <h3 style="margin-bottom: 10px; color: #e74c3c; font-size: 14px;">지원되지 않는 사이트</h3>
+          <p style="margin-bottom: 10px; font-size: 12px;">이 확장 프로그램은 X(트위터) 도메인에서만 작동합니다.</p>
+          <button id="openXButton" class="button" style="margin: 10px auto;">X.com 열기</button>
+        </div>
+      `;
+      
+      // 상태 표시 영역 비활성화 (선택적)
+      const statusIndicator = document.querySelector('.status-indicator-container');
+      if (statusIndicator) {
+        statusIndicator.style.display = 'none';
+      }
+    }
+    
+    // X.com을 새 탭에서 여는 버튼 이벤트 추가
+    setTimeout(() => {
+      const openXButton = document.getElementById('openXButton');
+      if (openXButton) {
+        openXButton.addEventListener('click', () => {
+          chrome.tabs.create({ url: 'https://x.com' });
+        });
+      }
+    }, 0);
+  }
+  // X.com 도메인으로 접속 권한 확인
+  function checkHostPermission(callback) {
+    if (typeof chrome.permissions !== 'undefined' && chrome.permissions.contains) {
+      // Manifest V3에서 host_permissions 확인
+      chrome.permissions.contains({
+        origins: ['*://x.com/*', '*://twitter.com/*']
+      }, (result) => {
+        callback(result);
+      });
+    } else {
+      // 권한 API를 사용할 수 없는 경우 true로 처리 (manifest에 이미 권한이 선언된 경우)
+      callback(true);
+    }
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    // 공통 UI 초기화 (테마, 클릭 간격, 디버그 로그 등 모든 도메인에서 설정 가능)
+    setupRefreshInterval();
+    setupClickDelay();
+    setupDarkModeToggle();
+    setupDeveloperOptions();
+    
+    // 현재 탭이 X(트위터) 도메인인지 확인
+    checkIsOnXDomain((isOnXDomain, url) => {
+      if (isOnXDomain) {
+        // X(트위터) 도메인인 경우 마스터 버튼과 탭별 설정 초기화
+        getCurrentTabId((tabId) => {
+          if (tabId) {
+            console.log('Popup initialized for X domain tab:', tabId);
+            currentTabId = tabId; // 전역 변수에 탭 ID 설정
+            setupMasterToggle();
+          } else {
+            console.error('Failed to get current tab ID');
+          }
+        });
+      } else {
+        // X(트위터) 도메인이 아닌 경우 마스터 버튼 영역만 변경
+        console.log('Not on X(Twitter) domain:', url);
+        checkHostPermission((hasPermission) => {
+          console.log('Has host permission:', hasPermission);
+          showUnsupportedSiteUI();
+          
+          // 현재 탭 ID도 가져와서 일반 설정을 위해 사용
+          getCurrentTabId((tabId) => {
+            if (tabId) {
+              currentTabId = tabId; // 설정 저장을 위해 탭 ID 설정
+            }
+          });
+        });
       }
     });
   });

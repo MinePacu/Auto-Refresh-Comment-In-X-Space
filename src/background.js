@@ -12,20 +12,44 @@ chrome.runtime.onInstalled.addListener(details => {
       debugLogEnabled: false, // 디버그 로그 기본값: 비활성
     });
     console.log('Default global settings applied on installation.');
+    
+    // 설치 후 X.com 페이지를 자동으로 열어 권한 즉시 활성화
+    chrome.tabs.create({ url: 'https://x.com' });
+  } else if (details.reason === 'update') {
+    // 확장 프로그램이 업데이트될 때 권한 관련 알림 표시
+    const previousVersion = details.previousVersion;
+    const manifest = chrome.runtime.getManifest();
+    const currentVersion = manifest.version;
+    
+    console.log(`Extension updated from ${previousVersion} to ${currentVersion}`);
+    
+    // 버전 0.1.1에서 host_permissions가 추가된 경우 (사이트 액세스 권한 추가)
+    if (previousVersion && previousVersion === '0.1.0' && currentVersion === '0.1.1') {
+      // 필요한 경우 알림 표시
+      chrome.notifications.create('host_permissions_added', {
+        type: 'basic',
+        iconUrl: 'icons/icon_128.png',
+        title: '확장 프로그램 권한 업데이트',
+        message: 'X.com 사이트에 자동 액세스 권한이 추가되었습니다.',
+        priority: 1
+      });
+    }
   }
 });
 
 // Content Script가 로드될 때 실제 탭 ID를 전달
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // 페이지 로딩이 완료되었을 때
-  if (changeInfo.status === 'complete' && tab.url) {
+  // 페이지 로딩이 완료되었을 때 X(트위터) 도메인인 경우에만 처리
+  if (changeInfo.status === 'complete' && tab.url && 
+      (tab.url.includes('x.com') || tab.url.includes('twitter.com'))) {
+    console.log(`Tab ${tabId} updated: ${tab.url}`);
     // Content Script에 실제 탭 ID 전달
     chrome.tabs.sendMessage(tabId, {
       type: 'TAB_ID_UPDATE',
       payload: { tabId: tabId }
-    }).catch(() => {
+    }).catch((error) => {
       // Content Script가 아직 로드되지 않았거나 지원하지 않는 페이지일 수 있음
-      // 에러를 무시함
+      console.debug(`Failed to send TAB_ID_UPDATE to tab ${tabId}: ${error?.message || 'unknown error'}`);
     });
   }
 });
@@ -79,15 +103,19 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // 모든 탭에 설정 변경 사항 브로드캐스트
 function broadcastSettingsToAllTabs(settings) {
-  chrome.tabs.query({}, (tabs) => {
+  // X(트위터) 도메인만 대상으로 탭 쿼리
+  chrome.tabs.query({
+    url: ['*://x.com/*', '*://twitter.com/*']
+  }, (tabs) => {
+    console.log(`Broadcasting settings to ${tabs.length} X(트위터) tabs`);
     tabs.forEach(tab => {
-      if (tab.url && (tab.url.includes('x.com') || tab.url.includes('twitter.com'))) {
+      if (tab.url && tab.id) {
         chrome.tabs.sendMessage(tab.id, {
           type: 'SETTINGS_UPDATED',
           payload: { settings }
-        }).catch(() => {
+        }).catch((error) => {
           // Content Script가 로드되지 않았거나 지원하지 않는 페이지일 수 있음
-          // 에러를 무시함
+          console.debug(`Failed to send message to tab ${tab.id}: ${error?.message || 'unknown error'}`);
         });
       }
     });
