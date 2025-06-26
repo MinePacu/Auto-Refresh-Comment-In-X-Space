@@ -311,3 +311,29 @@ code {
     margin-right: 8px;
     color: var(--text-color);
 }
+
+/* 크레딧 스타일 */
+.credits-container {
+    width: 100%;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.credits-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-color);
+    line-height: 1.5;
+    opacity: 0.8;
+}
+
+.version-text {
+    font-size: 11px;
+    color: var(--setting-description-color);
+}
+
+.author-text {
+    font-size: 10px;
+    color: var(--setting-description-color);
+}

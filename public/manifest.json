@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Auto Refresh Comment In X Space",
   "$schema": "https://json.schemastore.org/chrome-manifest.json",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "스페이스 생방송에서 새 답글을 보기 위해 X (구 트위터)의 스페이스를 포함한 상세 페이지의 답글을 자동으로 일정 주기마다 새로고침합니다.",
   "icons": {
     "16": "icons/icon_16.png",
