@@ -566,6 +566,15 @@ import './popup.css';
     setupDarkModeToggle();
     setupDeveloperOptions();
     
+    // GitHub 링크 이벤트 처리
+    const githubLink = document.getElementById('github-link');
+    if (githubLink) {
+      githubLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        chrome.tabs.create({ url: 'https://github.com/MinePacu/Auto-Refresh-Comment-In-X-Space' });
+      });
+    }
+    
     // 현재 탭이 X(트위터) 도메인인지 확인
     checkIsOnXDomain((isOnXDomain, url) => {
       if (isOnXDomain) {

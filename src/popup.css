@@ -337,3 +337,18 @@ code {
     font-size: 10px;
     color: var(--setting-description-color);
 }
+
+.github-link {
+    font-size: 11px;
+    color: #0366d6; /* GitHub 링크 색상 */
+    text-decoration: none;
+    transition: color 0.2s;
+    margin-top: 3px;
+    margin-bottom: 3px;
+    display: inline-block;
+}
+
+.github-link:hover {
+    color: #2188ff; /* 호버 시 색상 */
+    text-decoration: underline;
+}

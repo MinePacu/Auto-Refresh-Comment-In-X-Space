@@ -2,7 +2,7 @@
 
 X (구 트위터) 스페이스 댓글을 자동으로 최신순으로 정렬해주는 Chrome 확장 프로그램입니다.
 
-![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![Manifest](https://img.shields.io/badge/manifest-v3-green.svg)
 ![Chrome](https://img.shields.io/badge/Chrome-Extension-yellow.svg)
 
