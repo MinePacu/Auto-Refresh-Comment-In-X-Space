@@ -877,32 +877,52 @@ class XSpaceAutoRefresh {
   }
 
   /**
-   * Click reply settings button with condition checking
-   */
-  async performReplySettingsClick() {
-    const replySettingsBtn = this.getElementByXPath(
-      XSpaceAutoRefresh.CONSTANTS.XPATHS.replySettingsButton
-    );
+ * Click reply settings button with condition checking
+ */
+async performReplySettingsClick() {
+  const replySettingsBtn = this.getElementByXPath(
+    XSpaceAutoRefresh.CONSTANTS.XPATHS.replySettingsButton
+  );
+  
+  if (replySettingsBtn) {
+    replySettingsBtn.click();
+    this.logInfo('Reply settings button clicked');
     
-    if (replySettingsBtn) {
-      replySettingsBtn.click();
-      this.logInfo('Reply settings button clicked');
-      
-      // Wait for configured delay
-      await this.sleep(this.clickDelayMs);
-      
-      // Check conditions after click
-      if (!this.shouldStartRefreshCycle()) {
-        this.logInfo('Conditions changed after reply settings click, stopping');
-        this.stopRefreshCycle();
-        return false;
+    // 클릭 이벤트가 처리될 시간 확보
+    await this.sleep(this.clickDelayMs);
+    
+    // 추가: DOM 변화 감지를 통한 메뉴 로딩 대기
+    let attempts = 0;
+    const maxAttempts = 5;
+    let menuLoaded = false;
+    
+    while (!menuLoaded && attempts < maxAttempts) {
+      // 메뉴가 로드되었는지 확인
+      const menu = document.querySelector('[role="menu"]');
+      if (menu) {
+        menuLoaded = true;
+        this.logInfo('Sort menu loaded successfully');
+        // 메뉴가 완전히 렌더링될 시간 추가
+        await this.sleep(100);
+      } else {
+        attempts++;
+        this.logInfo(`Waiting for sort menu to load (attempt ${attempts}/${maxAttempts})...`);
+        await this.sleep(200); // 짧은 간격으로 재시도
       }
-    } else {
-      this.logWarning('Reply settings button not found');
     }
     
-    return true;
+    // Check conditions after click
+    if (!this.shouldStartRefreshCycle()) {
+      this.logInfo('Conditions changed after reply settings click, stopping');
+      this.stopRefreshCycle();
+      return false;
+    }
+  } else {
+    this.logWarning('Reply settings button not found');
   }
+  
+  return true;
+}
 
   /**
    * Click latest sort button
