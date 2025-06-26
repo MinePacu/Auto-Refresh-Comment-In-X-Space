@@ -59,7 +59,7 @@ import './popup.css';
 
   // 클릭 간 대기시간 관련 상수  
   const CLICK_DELAY_CONFIG = {
-    MIN_CLICK_DELAY: 5,  // 최소 5ms
+    MIN_CLICK_DELAY: 1,  // 최소 1ms
     MAX_CLICK_DELAY: 10000, // 최대 10초
     DEFAULT_CLICK_DELAY: 700 // 기본 700ms
   };
