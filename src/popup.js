@@ -524,7 +524,7 @@ import './popup.css';
         <div style="text-align: center; width: 100%;">
           <h3 style="margin-bottom: 10px; color: #e74c3c; font-size: 14px;">지원되지 않는 사이트</h3>
           <p style="margin-bottom: 10px; font-size: 12px;">이 확장 프로그램은 X(트위터) 도메인에서만 작동합니다.</p>
-          <button id="openXButton" class="button" style="margin: 10px auto;">X.com 열기</button>
+          <button id="openXButton" class="button" style="margin: 10px auto; padding: 5px 10px; font-size: 12px;">X.com 열기</button>
         </div>
       `;
       
