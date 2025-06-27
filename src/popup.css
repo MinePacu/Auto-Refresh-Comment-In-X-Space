@@ -352,3 +352,10 @@ code {
     color: #2188ff; /* 호버 시 색상 */
     text-decoration: underline;
 }
+
+.disclaimer-text {
+    font-size: 9px;
+    color: var(--setting-description-color);
+    font-style: italic;
+    opacity: 0.7;
+}
