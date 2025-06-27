@@ -308,12 +308,7 @@ import './popup.css';
   // 테마 적용 함수
   function applyTheme(theme) {
     const docElement = document.documentElement;
-    if (theme === 'system') {
-      docElement.removeAttribute('data-theme');
-      // CSS media query (prefers-color-scheme) will handle this
-    } else {
-      docElement.setAttribute('data-theme', theme);
-    }
+    docElement.setAttribute('data-theme', theme);
   }
 
   // 다크 모드 설정
@@ -322,7 +317,7 @@ import './popup.css';
     
     // 저장된 테마 불러오기 및 적용
     chrome.storage.sync.get(['theme'], result => {
-      const currentTheme = result.theme || 'system'; // 기본값 'system'
+      const currentTheme = result.theme || 'light'; // 기본값 'light'
       themeSelector.value = currentTheme;
       applyTheme(currentTheme);
     });
@@ -332,15 +327,6 @@ import './popup.css';
       chrome.storage.sync.set({ theme: selectedTheme }, () => {
         applyTheme(selectedTheme);
       });
-    });
-
-    // 시스템 테마 변경 감지 (선택 사항: 사용자가 '시스템 설정'을 선택했을 때만 활성화)
-    // 이 부분은 팝업이 열려있을 때만 동작하며, 팝업이 닫히면 리스너가 사라집니다.
-    // 지속적인 시스템 테마 감지를 원한다면 background script에서의 처리가 필요할 수 있습니다.
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-      if (themeSelector.value === 'system') {
-        applyTheme('system'); // Re-apply to trigger CSS media query evaluation
-      }
     });
   }
 
@@ -414,7 +400,7 @@ import './popup.css';
           
           statusText.textContent = `상태: ${statusMessage}`;
         } else {
-          statusText.textContent = '상태: 알 수 없음';
+          statusText.textContent = '상태: 대기 중';
           loadingSpinner.style.display = 'none';
         }
       });
@@ -524,7 +510,7 @@ import './popup.css';
         <div style="text-align: center; width: 100%;">
           <h3 style="margin-bottom: 10px; color: #e74c3c; font-size: 14px;">지원되지 않는 사이트</h3>
           <p style="margin-bottom: 10px; font-size: 12px;">이 확장 프로그램은 X(트위터) 도메인에서만 작동합니다.</p>
-          <button id="openXButton" class="button" style="margin: 10px auto; padding: 5px 10px; font-size: 12px;">X.com 열기</button>
+          <button id="openXButton" class="button" style="margin: 10px auto; padding: 5px 10px; font-size: 12px;">x.com 열기</button>
         </div>
       `;
       

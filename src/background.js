@@ -8,13 +8,10 @@ chrome.runtime.onInstalled.addListener(details => {
   if (details.reason === 'install') {
     // 확장 프로그램이 처음 설치될 때 전역 기본값 설정
     chrome.storage.sync.set({
-      theme: 'system', // 전역 테마 설정
+      theme: 'light', // 전역 테마 설정
       debugLogEnabled: false, // 디버그 로그 기본값: 비활성
     });
     console.log('Default global settings applied on installation.');
-    
-    // 설치 후 X.com 페이지를 자동으로 열어 권한 즉시 활성화
-    chrome.tabs.create({ url: 'https://x.com' });
   } else if (details.reason === 'update') {
     // 확장 프로그램이 업데이트될 때 권한 관련 알림 표시
     const previousVersion = details.previousVersion;
@@ -22,20 +19,7 @@ chrome.runtime.onInstalled.addListener(details => {
     const currentVersion = manifest.version;
     
     console.log(`Extension updated from ${previousVersion} to ${currentVersion}`);
-    
-    // 버전 0.1.1에서 host_permissions가 추가된 경우 (사이트 액세스 권한 추가)
-    if (previousVersion && previousVersion === '0.1.0' && currentVersion === '0.1.1') {
-      // 필요한 경우 알림 표시
-      chrome.notifications.create('host_permissions_added', {
-        type: 'basic',
-        iconUrl: 'icons/icon_128.png',
-        title: '확장 프로그램 권한 업데이트',
-        message: 'X.com 사이트에 자동 액세스 권한이 추가되었습니다.',
-        priority: 1
-      });
-    }
-  }
-});
+};});
 
 // Content Script가 로드될 때 실제 탭 ID를 전달
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

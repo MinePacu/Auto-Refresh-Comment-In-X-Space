@@ -38,7 +38,7 @@
         <h3 class="setting-title">클릭 간 대기 시간</h3>
         <p class="setting-description">'답글 설정' 버튼 클릭 후 '최신순 정렬' 버튼을 누르기 전까지의 대기 시간입니다 (밀리초 단위).</p>        <div class="click-delay-setting" style="margin-bottom: 10px;">
           <label for="clickDelay">대기시간(ms):</label>
-          <input type="number" id="clickDelay" min="5" max="10000" value="700" style="width:60px;" title="최소 5ms" />
+          <input type="number" id="clickDelay" min="1" max="10000" value="700" style="width:60px;" title="최소 5ms" />
           <button id="applyClickDelayBtn" class="button" style="margin-left: 5px; padding: 5px 10px; font-size: 12px;">적용</button>
         </div>
       </div>
@@ -54,7 +54,6 @@
           <select id="themeSelector" style="flex-grow: 1; margin-left: 8px; padding: 5px;">
             <option value="light">라이트</option>
             <option value="dark">다크</option>
-            <option value="system">시스템 설정</option>
           </select>
         </div>
       </div>
