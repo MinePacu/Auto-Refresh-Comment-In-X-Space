@@ -32,7 +32,8 @@ class XSpaceAutoRefresh {
     // XPath selectors for X (Twitter) elements
     XPATHS: {
       spaceRecordingParticipationStatus: '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/button/div/div[4]/button/div/span/span',
-      spaceParticipationStatus: '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/div/div/div[3]/a/div/span/span',
+      spaceParticipationStatus: '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/div/div/div[4]/a/div/span/span',
+      spaceParticipationStatus2 : '/html/body/div[1]/div/div/div[2]/main/div/div/div/div[1]/div/section/div/div/div[1]/div/div/article/div/div/div[3]/div[2]/div/div/div/div/div/div/div[3]/a/div/span/span',
       replySettingsButton: '//*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[1]/div[1]/div/div/div/div/div/div[3]/div/button[2]',
       latestSortButton: '//*[@id="layers"]/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div[3]'
     },
@@ -651,7 +652,17 @@ class XSpaceAutoRefresh {
     );
 
     let recordSpaceElement = null;
-    if (!liveSpaceElement && this.debugLogEnabled) {
+
+    if (!liveSpaceElement) {
+      this.logInfo('DEBUG: Live Space participation element not found, checking for participation2 element');
+      const liveSpaceElement2 = this.getElementByXPath(
+        XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus2
+      );
+
+      return liveSpaceElement2 !== null;
+    }
+
+    else if (!liveSpaceElement && this.debugLogEnabled) {
       recordSpaceElement = this.getElementByXPath(
         XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus
       );
@@ -670,7 +681,20 @@ class XSpaceAutoRefresh {
     );
 
     let recordElement = null;
-    if (!element && this.debugLogEnabled) {
+
+    if (!element) {
+      this.logInfo('DEBUG: Live Space participation element not found, checking for participation2 element');
+      const element2 = this.getElementByXPath(
+        XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus2
+      );
+
+      const text = element2.textContent.trim();
+      const { PARTICIPATING, PAUSED } = XSpaceAutoRefresh.CONSTANTS.PARTICIPATION_TEXTS;
+      
+      return text === PARTICIPATING || text === PAUSED;
+    }
+
+    else if (!element && this.debugLogEnabled) {
       recordElement = this.getElementByXPath(XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus);
       this.logInfo('DEBUG: Record Space participation element found:', recordElement !== null); 
 
@@ -684,7 +708,7 @@ class XSpaceAutoRefresh {
       return recordtext === PARTICIPATING || recordtext === PAUSED;
     }
     
-    if (!element) {
+    else if (!element && !this.debugLogEnabled) {
       return false;
     }
 
