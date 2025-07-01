@@ -405,8 +405,8 @@
         setTabSetting('masterOn', newState);
         updateMasterButton(newState);
         
-        // Content Script 준비 확인 후 메시지 전송
-        sendMessageToContentScript('TOGGLE_MASTER', { isOn: newState }, (response) => {
+        // Content Script 준비 확인 후 메시지 전송 (업데이트 복구 지원)
+        sendMessageToContentScriptWithRecovery('TOGGLE_MASTER', { isOn: newState }, (response) => {
           // 버튼 다시 활성화
           masterBtn.disabled = false;
           
@@ -937,6 +937,9 @@
     }
   }
   document.addEventListener('DOMContentLoaded', () => {
+    // Handle extension update recovery first
+    handleExtensionUpdate();
+    
     // 공통 UI 초기화 (테마, 클릭 간격, 디버그 로그 등 모든 도메인에서 설정 가능)
     setupRefreshInterval();
     setupClickDelay();
@@ -1052,6 +1055,91 @@
     }
   }
 
+  // Extension update handling and recovery
+  function handleExtensionUpdate() {
+    // Check if we're in an update recovery scenario
+    const updateRecoveryData = localStorage.getItem('xspace_popup_update_recovery');
+    if (updateRecoveryData) {
+      try {
+        const recoveryInfo = JSON.parse(updateRecoveryData);
+        const timeSinceUpdate = Date.now() - recoveryInfo.timestamp;
+        
+        // If update was recent (less than 2 minutes ago), show recovery message
+        if (timeSinceUpdate < 120000) {
+          showStatusMessage(`Extension recovered from update (v${recoveryInfo.version})`, 'success', 3000);
+        }
+        
+        // Clean up recovery data
+        localStorage.removeItem('xspace_popup_update_recovery');
+      } catch (error) {
+        console.error('Failed to process update recovery data:', error);
+        localStorage.removeItem('xspace_popup_update_recovery');
+      }
+    }
+  }
+
+  // Enhanced content script communication with update recovery
+  function sendMessageToContentScriptWithRecovery(type, payload, callback) {
+    // First attempt normal communication
+    sendMessageToContentScript(type, payload, (response) => {
+      if (response && response.status === 'success') {
+        callback(response);
+        return;
+      }
+      
+      // If failed, check if this might be due to extension update
+      checkIsOnXDomain((isOnXDomain, url) => {
+        if (!isOnXDomain) {
+          callback({ status: 'error', message: 'Not on X domain' });
+          return;
+        }
+        
+        // Show update recovery message and attempt recovery
+        showStatusMessage('Detecting extension update, attempting recovery...', 'info', 2000);
+        
+        // Wait a moment and try again
+        setTimeout(() => {
+          sendMessageToContentScript(type, payload, (secondResponse) => {
+            if (secondResponse && secondResponse.status === 'success') {
+              showStatusMessage('Extension recovered successfully!', 'success', 2000);
+              callback(secondResponse);
+            } else {
+              // Still failing, might need manual recovery
+              showStatusMessage('Extension may need recovery. Try refreshing the page.', 'warning', 5000);
+              callback({ status: 'error', message: 'Communication failed after recovery attempt' });
+            }
+          });
+        }, 1000);
+      });
+    });
+  }
+
+  // Listen for extension update events
+  if (chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'extensionUpdated') {
+        // Store update info for recovery
+        const updateInfo = {
+          previousVersion: request.previousVersion,
+          currentVersion: request.currentVersion,
+          timestamp: Date.now()
+        };
+        
+        localStorage.setItem('xspace_popup_update_recovery', JSON.stringify(updateInfo));
+        
+        // Show update notification
+        showStatusMessage(`Extension updated to v${request.currentVersion}`, 'success', 3000);
+        
+        // Refresh popup state
+        setTimeout(() => {
+          setupPeriodicStatusCheck();
+        }, 1000);
+        
+        sendResponse({ received: true });
+      }
+    });
+  }
+  
   // Popup이 닫힐 때 정리 작업
   window.addEventListener('beforeunload', () => {
     if (statusUpdateInterval) {
@@ -1059,4 +1147,7 @@
       statusUpdateInterval = null;
     }
   });
+  
+  // Handle extension update on popup load
+  handleExtensionUpdate();
 })();

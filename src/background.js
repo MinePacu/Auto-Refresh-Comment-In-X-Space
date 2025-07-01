@@ -116,6 +116,7 @@ async function injectContentScriptToExistingTabs() {
   }
 }
 
+// Chrome extension 업데이트 감지 및 알림
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     // 확장 프로그램이 처음 설치될 때 전역 기본값 설정
@@ -128,16 +129,51 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // 기존에 열려있는 X(트위터) 탭에 Content Script 주입
     await injectContentScriptToExistingTabs();
   } else if (details.reason === 'update') {
-    // 확장 프로그램이 업데이트될 때도 주입
-    await injectContentScriptToExistingTabs();
-    
     const previousVersion = details.previousVersion;
     const manifest = chrome.runtime.getManifest();
     const currentVersion = manifest.version;
     
     console.log(`Extension updated from ${previousVersion} to ${currentVersion}`);
+    
+    // 업데이트 알림을 모든 관련 탭에 전송
+    await notifyUpdateToAllTabs(previousVersion, currentVersion);
+    
+    // 기존에 열려있는 X(트위터) 탭에 Content Script 재주입
+    await injectContentScriptToExistingTabs();
   }
 });
+
+/**
+ * 모든 X(트위터) 탭에 업데이트 알림 전송
+ */
+async function notifyUpdateToAllTabs(previousVersion, currentVersion) {
+  try {
+    const tabs = await chrome.tabs.query({
+      url: ['*://x.com/*', '*://twitter.com/*']
+    });
+    
+    console.log(`Notifying ${tabs.length} tabs about extension update`);
+    
+    const notificationPromises = tabs.map(tab => {
+      if (tab.id && tab.status === 'complete') {
+        return chrome.tabs.sendMessage(tab.id, {
+          action: 'extensionUpdated',
+          previousVersion,
+          currentVersion,
+          timestamp: Date.now()
+        }).catch(error => {
+          console.debug(`Failed to notify tab ${tab.id} about update:`, error.message);
+        });
+      }
+    });
+    
+    await Promise.allSettled(notificationPromises);
+    console.log('Update notifications sent to all eligible tabs');
+    
+  } catch (error) {
+    console.error('Error notifying tabs about update:', error);
+  }
+}
 
 // Content Script가 로드될 때 실제 탭 ID를 전달
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

@@ -28,8 +28,431 @@ if (window.xSpaceAutoRefreshLoaded) {
  * - Detects when user is on X site, Space tweet, and listening to a Space
  * - Automatically scrolls and sorts replies when conditions are met
  * - Supports per-tab independent operation with robust state management
+ * - Handles Chrome extension updates with robust recovery system
  */
 class XSpaceAutoRefresh {
+  
+  // ================================
+  // UPDATE RECOVERY SYSTEM
+  // ================================
+  
+  /**
+   * Initialize Chrome extension update recovery system
+   */
+  initializeUpdateRecovery() {
+    // Set up context validation check
+    this.startContextValidationCheck();
+    
+    // Check for previous update recovery on load
+    this.checkForUpdateRecovery();
+    
+    // Listen for background script update notifications
+    this.setupUpdateNotificationListener();
+  }
+  
+  /**
+   * Safe Chrome API wrapper methods to handle context invalidation
+   */
+  
+  /**
+   * Safe wrapper for chrome.storage.sync.get
+   */
+  safeStorageGet(keys, callback) {
+    if (this.contextInvalidated) {
+      this.debugLog('Context invalidated, falling back to localStorage');
+      this.emergencyBackupToLocalStorage();
+      return;
+    }
+    
+    try {
+      chrome.storage.sync.get(keys, (result) => {
+        if (chrome.runtime.lastError) {
+          this.debugLog('Chrome storage error:', chrome.runtime.lastError);
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            this.handleContextInvalidation();
+            return;
+          }
+        }
+        callback(result);
+      });
+    } catch (error) {
+      this.debugLog('Chrome storage access failed:', error);
+      this.handleContextInvalidation();
+    }
+  }
+  
+  /**
+   * Safe wrapper for chrome.storage.sync.set
+   */
+  safeStorageSet(items, callback) {
+    if (this.contextInvalidated) {
+      this.debugLog('Context invalidated, falling back to localStorage');
+      this.emergencyBackupToLocalStorage();
+      return;
+    }
+    
+    try {
+      chrome.storage.sync.set(items, () => {
+        if (chrome.runtime.lastError) {
+          this.debugLog('Chrome storage error:', chrome.runtime.lastError);
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            this.handleContextInvalidation();
+            return;
+          }
+        }
+        if (callback) callback();
+      });
+    } catch (error) {
+      this.debugLog('Chrome storage access failed:', error);
+      this.handleContextInvalidation();
+    }
+  }
+  
+  /**
+   * Safe wrapper for chrome.runtime.sendMessage
+   */
+  safeSendMessage(message, callback) {
+    if (this.contextInvalidated) {
+      this.debugLog('Context invalidated, cannot send message');
+      return;
+    }
+    
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          this.debugLog('Chrome runtime error:', chrome.runtime.lastError);
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            this.handleContextInvalidation();
+            return;
+          }
+        }
+        if (callback) callback(response);
+      });
+    } catch (error) {
+      this.debugLog('Chrome runtime access failed:', error);
+      this.handleContextInvalidation();
+    }
+  }
+  
+  /**
+   * Start periodic context validation check
+   */
+  startContextValidationCheck() {
+    setInterval(() => {
+      if (!this.contextInvalidated) {
+        this.validateContext();
+      }
+    }, 5000); // Check every 5 seconds
+  }
+  
+  /**
+   * Validate Chrome extension context
+   */
+  validateContext() {
+    try {
+      // Simple test to check if Chrome APIs are accessible
+      chrome.runtime.getManifest();
+      return true;
+    } catch (error) {
+      this.debugLog('Context validation failed:', error);
+      this.handleContextInvalidation();
+      return false;
+    }
+  }
+  
+  /**
+   * Handle Chrome extension context invalidation (usually due to update)
+   */
+  handleContextInvalidation() {
+    if (this.contextInvalidated) return; // Already handled
+    
+    this.contextInvalidated = true;
+    this.updateDetected = true;
+    
+    this.debugLog('Chrome extension context invalidated - likely due to update');
+    
+    // Emergency backup current state to localStorage
+    this.emergencyBackupToLocalStorage();
+    
+    // Notify user about update
+    this.showUpdateNotification('Extension is updating... Your settings will be restored shortly.');
+    
+    // Stop all timers and activities
+    this.stopAllTimers();
+    
+    // Start recovery check
+    this.startRecoveryCheck();
+  }
+  
+  /**
+   * Emergency backup current state to localStorage
+   */
+  emergencyBackupToLocalStorage() {
+    try {
+      const backupState = {
+        isActive: this.isActive,
+        refreshInterval: this.refreshIntervalMs,
+        clickDelayMs: this.clickDelayMs,
+        debugLogEnabled: this.debugLogEnabled,
+        lastActiveUrl: window.location.href,
+        timestamp: Date.now(),
+        wasAutoRefreshing: !!this.refreshTimer,
+        tabId: this.tabId
+      };
+      
+      localStorage.setItem('xspace_extension_backup', JSON.stringify(backupState));
+      this.debugLog('Emergency backup saved to localStorage');
+    } catch (error) {
+      console.error('Failed to save emergency backup:', error);
+    }
+  }
+  
+  /**
+   * Start recovery check after update
+   */
+  startRecoveryCheck() {
+    this.recoveryCheckInterval = setInterval(() => {
+      this.attemptRecovery();
+    }, 2000); // Check every 2 seconds
+  }
+  
+  /**
+   * Attempt to recover from update
+   */
+  attemptRecovery() {
+    this.recoveryAttempts++;
+    
+    if (this.recoveryAttempts > this.maxRecoveryAttempts) {
+      this.debugLog('Max recovery attempts reached, stopping recovery');
+      if (this.recoveryCheckInterval) {
+        clearInterval(this.recoveryCheckInterval);
+        this.recoveryCheckInterval = null;
+      }
+      this.showUpdateNotification('Extension updated. Please refresh the page if auto-refresh is not working.', 'warning');
+      return;
+    }
+    
+    // Test if Chrome APIs are working again
+    try {
+      chrome.runtime.getManifest();
+      this.debugLog('Chrome APIs are working again, attempting recovery');
+      this.recoverFromUpdate();
+    } catch (error) {
+      this.debugLog(`Recovery attempt ${this.recoveryAttempts} failed:`, error);
+    }
+  }
+  
+  /**
+   * Recover state after Chrome extension update
+   */
+  recoverFromUpdate() {
+    try {
+      // Clear recovery interval
+      if (this.recoveryCheckInterval) {
+        clearInterval(this.recoveryCheckInterval);
+        this.recoveryCheckInterval = null;
+      }
+      
+      // Load backup state from localStorage
+      const backupData = localStorage.getItem('xspace_extension_backup');
+      if (backupData) {
+        const backupState = JSON.parse(backupData);
+        
+        // Restore state
+        this.isActive = backupState.isActive || false;
+        this.refreshIntervalMs = backupState.refreshInterval || this.constructor.CONSTANTS.DEFAULT_REFRESH_INTERVAL;
+        this.clickDelayMs = backupState.clickDelayMs || this.constructor.CONSTANTS.DEFAULT_CLICK_DELAY;
+        this.debugLogEnabled = backupState.debugLogEnabled || false;
+        
+        // Clear backup
+        localStorage.removeItem('xspace_extension_backup');
+        
+        this.debugLog('State recovered from backup:', backupState);
+        
+        // Reset flags
+        this.contextInvalidated = false;
+        this.updateDetected = false;
+        this.recoveryAttempts = 0;
+        
+        // Restart auto-refresh if it was running
+        if (backupState.wasAutoRefreshing && this.isActive) {
+          this.startAutoRefresh();
+          this.showUpdateNotification('Extension updated and auto-refresh resumed!', 'success');
+        } else {
+          this.showUpdateNotification('Extension updated successfully!', 'success');
+        }
+        
+        // Sync restored state back to chrome.storage
+        this.syncRestoredState();
+        
+      } else {
+        this.debugLog('No backup state found, starting fresh');
+        this.contextInvalidated = false;
+        this.updateDetected = false;
+        this.showUpdateNotification('Extension updated. Settings may need to be reconfigured.', 'info');
+      }
+      
+    } catch (error) {
+      console.error('Failed to recover from update:', error);
+      this.showUpdateNotification('Extension updated but recovery failed. Please refresh the page.', 'error');
+    }
+  }
+  
+  /**
+   * Check for update recovery on page load
+   */
+  checkForUpdateRecovery() {
+    const backupData = localStorage.getItem('xspace_extension_backup');
+    if (backupData) {
+      try {
+        const backupState = JSON.parse(backupData);
+        const timeSinceBackup = Date.now() - backupState.timestamp;
+        
+        // If backup is less than 5 minutes old and from same URL, attempt recovery
+        if (timeSinceBackup < 300000 && backupState.lastActiveUrl === window.location.href) {
+          this.debugLog('Found recent backup, attempting recovery');
+          this.recoverFromUpdate();
+        } else {
+          // Clean up old backup
+          localStorage.removeItem('xspace_extension_backup');
+        }
+      } catch (error) {
+        console.error('Failed to parse backup data:', error);
+        localStorage.removeItem('xspace_extension_backup');
+      }
+    }
+  }
+  
+  /**
+   * Sync restored state back to chrome.storage
+   */
+  syncRestoredState() {
+    const tabMasterKey = this.getTabSettingKey('masterOn');
+    
+    // Use safe storage methods
+    this.safeStorageSet({
+      [tabMasterKey]: this.isActive,
+      refreshInterval: this.refreshIntervalMs / 1000,
+      clickDelayMs: this.clickDelayMs,
+      debugLogEnabled: this.debugLogEnabled
+    });
+  }
+  
+  /**
+   * Setup listener for background script update notifications
+   */
+  setupUpdateNotificationListener() {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'extensionUpdated') {
+        this.debugLog('Received extension update notification from background');
+        this.handleExtensionUpdate();
+        sendResponse({ received: true });
+      }
+    });
+  }
+  
+  /**
+   * Handle extension update notification from background script
+   */
+  handleExtensionUpdate() {
+    this.showUpdateNotification('Extension has been updated. Checking for recovery...', 'info');
+    
+    // Small delay to allow chrome APIs to stabilize
+    setTimeout(() => {
+      this.checkForUpdateRecovery();
+    }, 1000);
+  }
+  
+  /**
+   * Stop all timers and intervals
+   */
+  stopAllTimers() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    
+    if (this.detectionTimer) {
+      clearInterval(this.detectionTimer);
+      this.detectionTimer = null;
+    }
+    
+    if (this.detectionInterval) {
+      clearInterval(this.detectionInterval);
+      this.detectionInterval = null;
+    }
+    
+    if (this.recoveryCheckInterval) {
+      clearInterval(this.recoveryCheckInterval);
+      this.recoveryCheckInterval = null;
+    }
+  }
+  
+  /**
+   * Show update notification to user
+   */
+  showUpdateNotification(message, type = 'info') {
+    // Remove existing notification
+    const existingNotification = document.getElementById('xspace-update-notification');
+    if (existingNotification) {
+      existingNotification.remove();
+    }
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.id = 'xspace-update-notification';
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      max-width: 300px;
+      word-wrap: break-word;
+      animation: slideIn 0.3s ease-out;
+    `;
+    
+    // Set colors based on type
+    const colors = {
+      success: { bg: '#d4edda', border: '#c3e6cb', text: '#155724' },
+      error: { bg: '#f8d7da', border: '#f5c6cb', text: '#721c24' },
+      warning: { bg: '#fff3cd', border: '#ffeaa7', text: '#856404' },
+      info: { bg: '#d1ecf1', border: '#bee5eb', text: '#0c5460' }
+    };
+    
+    const color = colors[type] || colors.info;
+    notification.style.backgroundColor = color.bg;
+    notification.style.border = `1px solid ${color.border}`;
+    notification.style.color = color.text;
+    
+    notification.textContent = message;
+    
+    // Add CSS animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.remove();
+      }
+      if (style.parentNode) {
+        style.remove();
+      }
+    }, 5000);
+  }
   
   // ================================
   // CONSTANTS AND CONFIGURATION
@@ -68,9 +491,18 @@ class XSpaceAutoRefresh {
   // CONSTRUCTOR AND INITIALIZATION
   // ================================
   constructor() {
+    // Initialize update recovery system properties
+    this.contextInvalidated = false;
+    this.updateDetected = false;
+    this.recoveryAttempts = 0;
+    this.maxRecoveryAttempts = 5;
+    this.recoveryCheckInterval = null;
+    
     this.isActive = false;
     this.detectionInterval = null;
+    this.detectionTimer = null;
     this.refreshInterval = null;
+    this.refreshTimer = null;
     this.refreshIntervalMs = XSpaceAutoRefresh.CONSTANTS.DEFAULT_REFRESH_INTERVAL;
     this.clickDelayMs = XSpaceAutoRefresh.CONSTANTS.DEFAULT_CLICK_DELAY;
     this.tabId = null;
@@ -90,6 +522,9 @@ class XSpaceAutoRefresh {
     // 페이지 언로드 시 정리 이벤트 등록
     window.addEventListener('beforeunload', this.boundCleanup);
 
+    // Initialize update recovery system
+    this.initializeUpdateRecovery();
+    
     this.initialize();
   }
 
@@ -109,7 +544,7 @@ class XSpaceAutoRefresh {
    * Request actual tab ID from background script
    */
   requestTabIdFromBackground() {
-    chrome.runtime.sendMessage(
+    this.safeSendMessage(
       { type: 'GET_TAB_ID' },
       (response) => {
         if (response && response.status === 'success') {
@@ -165,7 +600,7 @@ class XSpaceAutoRefresh {
     const tabMasterKey = this.getTabSettingKey('masterOn');
     const settingsToLoad = [tabMasterKey, 'refreshInterval', 'clickDelayMs'];
     
-    chrome.storage.sync.get(settingsToLoad, (result) => {
+    this.safeStorageGet(settingsToLoad, (result) => {
       this.isActive = result[tabMasterKey] || false;
       
       // 새로고침 간격 유효성 검사 적용
@@ -175,7 +610,7 @@ class XSpaceAutoRefresh {
       // 로드된 값이 조정되었다면 저장소에 다시 저장
       if (this.refreshIntervalMs !== rawRefreshInterval) {
         const adjustedSeconds = this.refreshIntervalMs / 1000;
-        chrome.storage.sync.set({ refreshInterval: adjustedSeconds });
+        this.safeStorageSet({ refreshInterval: adjustedSeconds });
         this.logWarning(`Loaded refresh interval adjusted from ${rawRefreshInterval/1000}s to ${adjustedSeconds}s due to Rate Limit constraints`);
       }
       
@@ -203,7 +638,7 @@ class XSpaceAutoRefresh {
    * Load debug log setting from Chrome storage
    */
   loadDebugLogSetting() {
-    chrome.storage.sync.get(['debugLogEnabled'], (result) => {
+    this.safeStorageGet(['debugLogEnabled'], (result) => {
       this.debugLogEnabled = result.debugLogEnabled || false;
       this.logInfo('Debug log setting loaded:', this.debugLogEnabled);
     });
@@ -328,12 +763,16 @@ class XSpaceAutoRefresh {
     const oldTabKey = `masterOn_tab_${oldTabId}`;
     const newTabKey = `masterOn_tab_${newTabId}`;
     
-    chrome.storage.sync.get([oldTabKey], (result) => {
+    this.safeStorageGet([oldTabKey], (result) => {
       if (result[oldTabKey] !== undefined) {
         // 새 키로 설정 저장
-        chrome.storage.sync.set({ [newTabKey]: result[oldTabKey] });
-        // 이전 키 삭제
-        chrome.storage.sync.remove([oldTabKey]);
+        this.safeStorageSet({ [newTabKey]: result[oldTabKey] });
+        // 이전 키 삭제 (안전한 방법으로 처리)
+        try {
+          chrome.storage.sync.remove([oldTabKey]);
+        } catch (error) {
+          this.debugLog('Failed to remove old tab key:', error);
+        }
         
         this.logInfo(`Migrated settings from ${oldTabId} to ${newTabId}`);
       }
@@ -350,7 +789,7 @@ class XSpaceAutoRefresh {
     
     // Save as tab-specific setting
     const tabMasterKey = this.getTabSettingKey('masterOn');
-    chrome.storage.sync.set({ [tabMasterKey]: this.isActive });
+    this.safeStorageSet({ [tabMasterKey]: this.isActive });
     
     this.logInfo('Master toggled to:', this.isActive);
     
@@ -376,7 +815,7 @@ class XSpaceAutoRefresh {
     
     // Save as global setting (shared across all tabs)
     // Store in seconds for compatibility with popup
-    chrome.storage.sync.set({ refreshInterval: validatedInterval / 1000 });
+    this.safeStorageSet({ refreshInterval: validatedInterval / 1000 });
     
     if (validatedInterval !== requestedInterval) {
       const minSeconds = XSpaceAutoRefresh.CONSTANTS.MIN_REFRESH_INTERVAL / 1000;
@@ -451,7 +890,7 @@ class XSpaceAutoRefresh {
     this.clickDelayMs = delay;
     
     // Save as global setting (shared across all tabs)
-    chrome.storage.sync.set({ clickDelayMs: this.clickDelayMs });
+    this.safeStorageSet({ clickDelayMs: this.clickDelayMs });
     this.logInfo('Click delay set to:', this.clickDelayMs);
     
     sendResponse({ status: 'success' });
@@ -1160,6 +1599,17 @@ async performReplySettingsClick() {
   }
 
   /**
+   * Log debug message with tab identifier (only when debug is enabled)
+   * @param {string} message - Message to log
+   * @param {...any} args - Additional arguments
+   */
+  debugLog(message, ...args) {
+    if (this.debugLogEnabled) {
+      console.debug(`[Tab ${this.tabId}] DEBUG: ${message}`, ...args);
+    }
+  }
+
+  /**
    * Cleanup method to prevent memory leaks
    * Called when page is about to be unloaded
    */
@@ -1178,6 +1628,40 @@ async performReplySettingsClick() {
     // 플래그 리셋
     this.isPerformingActions = false;
     this.isFirstRefresh = true;
+  }
+  
+  /**
+   * Start auto-refresh functionality (alias for startDetection for better clarity)
+   */
+  startAutoRefresh() {
+    this.startDetection();
+  }
+  
+  /**
+   * Stop auto-refresh functionality (alias for stopDetection for better clarity)
+   */
+  stopAutoRefresh() {
+    this.stopDetection();
+  }
+  
+  /**
+   * Enhanced cleanup method to handle all timers and resources
+   */
+  cleanup() {
+    this.stopAllTimers();
+    
+    // Remove event listeners
+    if (this.boundCleanup) {
+      window.removeEventListener('beforeunload', this.boundCleanup);
+    }
+    
+    // Clear any remaining notification
+    const notification = document.getElementById('xspace-update-notification');
+    if (notification) {
+      notification.remove();
+    }
+    
+    this.logInfo('Extension cleanup completed');
   }
 }
 
