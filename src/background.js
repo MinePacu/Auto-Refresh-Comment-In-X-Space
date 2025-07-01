@@ -4,7 +4,119 @@
 // For more information on background script,
 // See https://developer.chrome.com/extensions/background_pages
 
-chrome.runtime.onInstalled.addListener(details => {
+// 기존 탭에 Content Script 주입하는 함수
+async function injectContentScriptToExistingTabs() {
+  try {
+    // 권한 확인
+    const hasPermissions = await chrome.permissions.contains({
+      permissions: ['scripting', 'tabs'],
+      origins: ['*://x.com/*', '*://twitter.com/*']
+    });
+
+    if (!hasPermissions) {
+      console.warn('Insufficient permissions for content script injection');
+      return;
+    }
+
+    // X(트위터) 도메인 탭 찾기
+    const tabs = await chrome.tabs.query({
+      url: ['*://x.com/*', '*://twitter.com/*']
+    });
+    
+    console.log(`Found ${tabs.length} existing X(Twitter) tabs for injection`);
+    
+    if (tabs.length === 0) {
+      console.log('No X(Twitter) tabs found for injection');
+      return;
+    }
+
+    // 각 탭에 대해 병렬로 주입 시도 (성능 향상)
+    const injectionPromises = tabs.map(async (tab) => {
+      try {
+        // 탭이 완전히 로드되었는지 확인
+        if (tab.status === 'complete' && !tab.discarded && tab.id) {
+          console.log(`Checking content script in existing tab: ${tab.id} (${tab.url})`);
+          
+          // 먼저 이미 로드되어 있는지 확인
+          try {
+            await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
+            console.log(`Content script already exists in tab ${tab.id}`);
+            return { tabId: tab.id, status: 'already_exists' };
+          } catch (error) {
+            // Content script가 없으므로 주입 진행
+            console.log(`Injecting content script to existing tab: ${tab.id}`);
+          }
+
+          // Content Script 주입
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['contentScript.js']
+          });
+          
+          // 주입 후 충분한 대기 시간
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // 주입 성공 확인 후 탭 ID 업데이트 메시지 전송
+          try {
+            await chrome.tabs.sendMessage(tab.id, {
+              type: 'TAB_ID_UPDATE',
+              payload: { tabId: tab.id }
+            });
+            console.log(`Successfully injected and updated tab ${tab.id}`);
+            return { tabId: tab.id, status: 'success' };
+          } catch (updateError) {
+            console.warn(`Failed to send TAB_ID_UPDATE to tab ${tab.id}:`, updateError.message);
+            return { tabId: tab.id, status: 'injection_success_update_failed', error: updateError.message };
+          }
+          
+        } else {
+          console.log(`Tab ${tab.id} is not ready for injection (status: ${tab.status}, discarded: ${tab.discarded})`);
+          return { tabId: tab.id, status: 'not_ready', reason: `status: ${tab.status}, discarded: ${tab.discarded}` };
+        }
+      } catch (error) {
+        console.warn(`Failed to inject content script to tab ${tab.id}:`, error.message);
+        return { tabId: tab.id, status: 'failed', error: error.message };
+      }
+    });
+
+    // 모든 주입 작업 완료 대기
+    const results = await Promise.allSettled(injectionPromises);
+    
+    // 결과 로그 및 통계
+    const summary = {
+      total: tabs.length,
+      success: 0,
+      already_exists: 0,
+      failed: 0,
+      not_ready: 0
+    };
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const { status } = result.value;
+        if (status === 'success' || status === 'injection_success_update_failed') {
+          summary.success++;
+        } else if (status === 'already_exists') {
+          summary.already_exists++;
+        } else if (status === 'not_ready') {
+          summary.not_ready++;
+        } else {
+          summary.failed++;
+        }
+      } else {
+        summary.failed++;
+        console.error(`Injection promise rejected for tab:`, result.reason);
+      }
+    });
+
+    console.log('Content script injection summary:', summary);
+    
+  } catch (error) {
+    console.error('Error in injectContentScriptToExistingTabs:', error);
+  }
+}
+
+chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     // 확장 프로그램이 처음 설치될 때 전역 기본값 설정
     chrome.storage.sync.set({
@@ -12,14 +124,20 @@ chrome.runtime.onInstalled.addListener(details => {
       debugLogEnabled: false, // 디버그 로그 기본값: 비활성
     });
     console.log('Default global settings applied on installation.');
+    
+    // 기존에 열려있는 X(트위터) 탭에 Content Script 주입
+    await injectContentScriptToExistingTabs();
   } else if (details.reason === 'update') {
-    // 확장 프로그램이 업데이트될 때 권한 관련 알림 표시
+    // 확장 프로그램이 업데이트될 때도 주입
+    await injectContentScriptToExistingTabs();
+    
     const previousVersion = details.previousVersion;
     const manifest = chrome.runtime.getManifest();
     const currentVersion = manifest.version;
     
     console.log(`Extension updated from ${previousVersion} to ${currentVersion}`);
-};});
+  }
+});
 
 // Content Script가 로드될 때 실제 탭 ID를 전달
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -27,14 +145,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && 
       (tab.url.includes('x.com') || tab.url.includes('twitter.com'))) {
     console.log(`Tab ${tabId} updated: ${tab.url}`);
-    // Content Script에 실제 탭 ID 전달
-    chrome.tabs.sendMessage(tabId, {
-      type: 'TAB_ID_UPDATE',
-      payload: { tabId: tabId }
-    }).catch((error) => {
-      // Content Script가 아직 로드되지 않았거나 지원하지 않는 페이지일 수 있음
-      console.debug(`Failed to send TAB_ID_UPDATE to tab ${tabId}: ${error?.message || 'unknown error'}`);
-    });
+    
+    // Content Script 로딩 대기 후 메시지 전송
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tabId, {
+        type: 'TAB_ID_UPDATE',
+        payload: { tabId: tabId }
+      }).catch((error) => {
+        console.debug(`Failed to send TAB_ID_UPDATE to tab ${tabId}: ${error?.message || 'unknown error'}`);
+      });
+    }, 1500); // 1.5초 대기 후 전송 (기존 1초에서 증가)
   }
 });
 
@@ -125,3 +245,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   return true;
 });
+
+// Chrome extension 시작 시 상태 복구
+chrome.runtime.onStartup.addListener(() => {
+  console.log('Extension startup detected');
+  // 필요 시 기존 탭들에 Content Script 재주입
+  setTimeout(() => {
+    injectContentScriptToExistingTabs();
+  }, 1000);
+});
+
+// Service Worker 깨어날 때 상태 복구
+chrome.runtime.onSuspend.addListener(() => {
+  console.log('Service worker suspending');
+});
+
+// 브라우저 세션 복구 시 처리
+if (chrome.runtime.onRestartRequired) {
+  chrome.runtime.onRestartRequired.addListener((reason) => {
+    console.log('Runtime restart required:', reason);
+  });
+}

@@ -1,5 +1,26 @@
 'use strict';
 
+// ================================
+// DUPLICATE LOADING PREVENTION
+// ================================
+
+// 중복 로딩 방지 및 기존 인스턴스 정리
+if (window.xSpaceAutoRefreshLoaded) {
+  console.log('X Space Auto Refresh already loaded, cleaning up existing instance...');
+  
+  // 기존 인스턴스 정리
+  if (window.xSpaceAutoRefreshInstance) {
+    try {
+      window.xSpaceAutoRefreshInstance.cleanup();
+    } catch (error) {
+      console.warn('Error cleaning up existing instance:', error);
+    }
+    window.xSpaceAutoRefreshInstance = null;
+  }
+} else {
+  window.xSpaceAutoRefreshLoaded = true;
+}
+
 /**
  * X (Twitter) Space Auto Refresh Extension Content Script
  * 
@@ -211,6 +232,11 @@ class XSpaceAutoRefresh {
     
     try {
       switch (type) {
+        case 'PING':
+          // Content Script 준비 상태 확인용
+          sendResponse({ status: 'ready', tabId: this.tabId });
+          break;
+
         case 'TAB_ID_UPDATE':
           this.handleTabIdUpdate(payload, sendResponse);
           break;
@@ -226,7 +252,24 @@ class XSpaceAutoRefresh {
         case 'SET_CLICK_DELAY':
           this.handleSetClickDelay(payload, sendResponse);
           break;        case 'GET_STATUS':
-          this.handleGetStatus(sendResponse);
+          try {
+            this.handleGetStatus(sendResponse);
+          } catch (statusError) {
+            this.logError('Error getting status:', statusError);
+            sendResponse({ 
+              status: 'error', 
+              error: 'Failed to get status',
+              data: {
+                isActive: this.isActive,
+                isOnXSite: false,
+                isOnSpaceTweet: false,
+                isListeningToSpace: false,
+                replyCount: 0,
+                url: window.location.href,
+                tabId: this.tabId
+              }
+            });
+          }
           break;        case 'SET_DEBUG_LOG':
           this.handleSetDebugLog(payload, sendResponse);
           break;
@@ -241,7 +284,11 @@ class XSpaceAutoRefresh {
       }
     } catch (error) {
       this.logError('Error handling message:', error);
-      sendResponse({ status: 'error', error: error.message });
+      sendResponse({ 
+        status: 'error', 
+        error: error.message,
+        messageType: type 
+      });
     }
   }
 
@@ -414,10 +461,32 @@ class XSpaceAutoRefresh {
    * Handle status request message
    * @param {Function} sendResponse - Response callback
    */  
+  /**
+   * Handle status request message with enhanced error handling
+   * @param {Function} sendResponse - Response callback
+   */  
   handleGetStatus(sendResponse) {
-    const status = this.getCurrentStatus();
-    this.logInfo('Sending status:', status);
-    sendResponse({ status: 'success', data: status });
+    try {
+      const status = this.getCurrentStatus();
+      this.logInfo('Sending status:', status);
+      sendResponse({ status: 'success', data: status });
+    } catch (error) {
+      this.logError('Error getting current status:', error);
+      
+      // 안전한 기본 상태 반환
+      const safeStatus = {
+        isActive: this.isActive || false,
+        isOnXSite: this.isOnXSite() || false,
+        isOnSpaceTweet: false, // 오류 발생 시 안전하게 false
+        isListeningToSpace: false, // 오류 발생 시 안전하게 false
+        replyCount: 0,
+        url: window.location.href || '',
+        tabId: this.tabId || 'unknown',
+        error: error.message
+      };
+      
+      sendResponse({ status: 'partial_success', data: safeStatus });
+    }
   }
 
   /**
@@ -570,16 +639,46 @@ class XSpaceAutoRefresh {
    * Get current extension status
    * @returns {Object} Current status information
    */
+  /**
+   * Get current extension status with error handling
+   * @returns {Object} Current status information
+   */
   getCurrentStatus() {
-    return {
+    const status = {
       isActive: this.isActive,
-      isOnXSite: this.isOnXSite(),
-      isOnSpaceTweet: this.isOnSpaceTweet(),
-      isListeningToSpace: this.isListeningToSpace(),
-      replyCount: this.getReplyCount(),
       url: window.location.href,
       tabId: this.tabId
     };
+
+    try {
+      status.isOnXSite = this.isOnXSite();
+    } catch (error) {
+      this.logError('Error checking X site status:', error);
+      status.isOnXSite = false;
+    }
+
+    try {
+      status.isOnSpaceTweet = this.isOnSpaceTweet();
+    } catch (error) {
+      this.logError('Error checking Space tweet status:', error);
+      status.isOnSpaceTweet = false;
+    }
+
+    try {
+      status.isListeningToSpace = this.isListeningToSpace();
+    } catch (error) {
+      this.logError('Error checking Space listening status:', error);
+      status.isListeningToSpace = false;
+    }
+
+    try {
+      status.replyCount = this.getReplyCount();
+    } catch (error) {
+      this.logError('Error getting reply count:', error);
+      status.replyCount = 0;
+    }
+
+    return status;
   }
 
   /**
@@ -651,24 +750,30 @@ class XSpaceAutoRefresh {
       XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus
     );
 
-    let recordSpaceElement = null;
-
     if (!liveSpaceElement) {
       this.logInfo('DEBUG: Live Space participation element not found, checking for participation2 element');
       const liveSpaceElement2 = this.getElementByXPath(
         XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus2
       );
 
-      return liveSpaceElement2 !== null;
+      // liveSpaceElement2 null 체크 추가
+      if (!liveSpaceElement2) {
+        // 디버그 로그가 활성화된 경우에만 녹화된 스페이스 엘리먼트 확인
+        if (this.debugLogEnabled) {
+          const recordSpaceElement = this.getElementByXPath(
+            XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus
+          );
+          this.logInfo('DEBUG: Record Space element found:', recordSpaceElement !== null);
+          return recordSpaceElement !== null;
+        }
+        
+        return false;
+      }
+
+      return true; // liveSpaceElement2가 존재하면 true 반환
     }
 
-    else if (!liveSpaceElement && this.debugLogEnabled) {
-      recordSpaceElement = this.getElementByXPath(
-        XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus
-      );
-      this.logInfo('DEBUG: Record Space element found:', recordSpaceElement !== null);
-    }
-    return liveSpaceElement !== null || recordSpaceElement !== null;
+    return true; // liveSpaceElement가 존재하면 true 반환
   }
 
   /**
@@ -680,36 +785,36 @@ class XSpaceAutoRefresh {
       XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus
     );
 
-    let recordElement = null;
-
     if (!element) {
       this.logInfo('DEBUG: Live Space participation element not found, checking for participation2 element');
       const element2 = this.getElementByXPath(
         XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceParticipationStatus2
       );
 
+      // element2 null 체크 추가
+      if (!element2) {
+        // 디버그 로그가 활성화된 경우에만 녹화된 스페이스 엘리먼트 확인
+        if (this.debugLogEnabled) {
+          const recordElement = this.getElementByXPath(
+            XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus
+          );
+          this.logInfo('DEBUG: Record Space participation element found:', recordElement !== null);
+          
+          if (recordElement) {
+            const recordText = recordElement.textContent.trim();
+            const { PARTICIPATING, PAUSED } = XSpaceAutoRefresh.CONSTANTS.PARTICIPATION_TEXTS;
+            return recordText === PARTICIPATING || recordText === PAUSED;
+          }
+        }
+        
+        this.logInfo('DEBUG: No participation elements found');
+        return false;
+      }
+
       const text = element2.textContent.trim();
       const { PARTICIPATING, PAUSED } = XSpaceAutoRefresh.CONSTANTS.PARTICIPATION_TEXTS;
       
       return text === PARTICIPATING || text === PAUSED;
-    }
-
-    else if (!element && this.debugLogEnabled) {
-      recordElement = this.getElementByXPath(XSpaceAutoRefresh.CONSTANTS.XPATHS.spaceRecordingParticipationStatus);
-      this.logInfo('DEBUG: Record Space participation element found:', recordElement !== null); 
-
-      if (!recordElement) {
-        return false;
-      }
-
-      const recordtext = recordElement.textContent.trim();
-      const { PARTICIPATING, PAUSED } = XSpaceAutoRefresh.CONSTANTS.PARTICIPATION_TEXTS;
-
-      return recordtext === PARTICIPATING || recordtext === PAUSED;
-    }
-    
-    else if (!element && !this.debugLogEnabled) {
-      return false;
     }
 
     const text = element.textContent.trim();
@@ -972,8 +1077,18 @@ async performReplySettingsClick() {
    * @param {string} xpath - XPath expression
    * @returns {Element|null} Found element or null
    */
+  /**
+   * Get DOM element by XPath with enhanced error handling
+   * @param {string} xpath - XPath expression
+   * @returns {Element|null} Found element or null
+   */
   getElementByXPath(xpath) {
     try {
+      if (!xpath || typeof xpath !== 'string') {
+        this.logWarning('Invalid XPath provided:', xpath);
+        return null;
+      }
+
       const result = document.evaluate(
         xpath,
         document,
@@ -981,7 +1096,15 @@ async performReplySettingsClick() {
         XPathResult.FIRST_ORDERED_NODE_TYPE,
         null
       );
-      return result.singleNodeValue;
+      
+      const element = result.singleNodeValue;
+      
+      // 추가 유효성 검사
+      if (element && element.nodeType === Node.ELEMENT_NODE) {
+        return element;
+      }
+      
+      return null;
     } catch (error) {
       this.logError('Error evaluating XPath:', xpath, error);
       return null;
@@ -1062,5 +1185,11 @@ async performReplySettingsClick() {
 // EXTENSION INITIALIZATION
 // ================================
 
-// Create and initialize the extension instance
-const xSpaceAutoRefresh = new XSpaceAutoRefresh();
+// 중복 로딩 방지 체크 후 인스턴스 생성
+if (!window.xSpaceAutoRefreshInstance) {
+  // Create and initialize the extension instance
+  window.xSpaceAutoRefreshInstance = new XSpaceAutoRefresh();
+  console.log('X Space Auto Refresh instance created and initialized');
+} else {
+  console.log('X Space Auto Refresh instance already exists, skipping creation');
+}

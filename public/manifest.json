@@ -16,14 +16,17 @@
   "action": {
     "default_title": "Auto Refresh Comment In X Space",
     "default_popup": "popup.html"
-  },  "permissions": [
+  },
+  "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "*://x.com/*",
     "*://twitter.com/*"
-  ],"content_scripts": [
+  ],
+  "content_scripts": [
     {
       "matches": [
         "*://x.com/*",

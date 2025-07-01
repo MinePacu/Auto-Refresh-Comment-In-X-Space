@@ -1,11 +1,13 @@
 'use strict';
 
-import './popup.css';
-
 (function() {
   // 전역 변수들
   let currentTabId = null;
   let statusUpdateInterval = null;
+  
+  // 동적 주입 관련 변수들
+  let injectionInProgress = false;
+  const injectionAttempts = new Map(); // tabId -> attempt count
 
   // 탭별 설정 관리 함수들
   function getCurrentTabId(callback) {
@@ -330,6 +332,56 @@ import './popup.css';
     });
   }
 
+  // 개발자 옵션 설정
+  function setupDeveloperOptions() {
+    const developerOptionsHeader = document.querySelector('.developer-options-header');
+    const developerOptionsContent = document.getElementById('developerOptionsContent');
+    const toggleIcon = document.getElementById('devOptionsToggleIcon');
+    const debugLogToggle = document.getElementById('debugLogToggle');
+
+    // 개발자 옵션 펼치기/접기
+    if (developerOptionsHeader && developerOptionsContent && toggleIcon) {
+      developerOptionsHeader.addEventListener('click', () => {
+        const isHidden = developerOptionsContent.style.display === 'none';
+        developerOptionsContent.style.display = isHidden ? 'block' : 'none';
+        toggleIcon.textContent = isHidden ? '▼' : '▶';
+      });
+    }
+
+    // 디버그 로그 토글 상태 불러오기
+    if (debugLogToggle) {
+      chrome.storage.sync.get(['debugLogEnabled'], result => {
+        const debugEnabled = result.debugLogEnabled || false;
+        updateDebugLogButton(debugEnabled);
+      });
+
+      // 디버그 로그 토글 이벤트
+      debugLogToggle.addEventListener('click', () => {
+        chrome.storage.sync.get(['debugLogEnabled'], result => {
+          const currentState = result.debugLogEnabled || false;
+          const newState = !currentState;
+          
+          chrome.storage.sync.set({ debugLogEnabled: newState }, () => {
+            updateDebugLogButton(newState);
+            
+            // Content Script에 디버그 로그 설정 전송
+            sendMessageToContentScript('SET_DEBUG_LOG', { enabled: newState }, (response) => {
+              if (response && response.status === 'error') {
+                console.error('Error setting debug log:', response.message);
+              }
+            });
+          });
+        });
+      });
+    }
+
+    function updateDebugLogButton(isEnabled) {
+      if (debugLogToggle) {
+        debugLogToggle.textContent = isEnabled ? 'ON' : 'OFF';
+        debugLogToggle.className = isEnabled ? 'button' : 'button off';
+      }
+    }
+  }
 
   // 마스터 토글 설정 (탭별)
   function setupMasterToggle() {
@@ -344,13 +396,30 @@ import './popup.css';
 
     // 버튼 클릭 이벤트
     masterBtn.addEventListener('click', () => {
+      // 버튼 비활성화 (중복 클릭 방지)
+      masterBtn.disabled = true;
+      
       getTabSetting('masterOn', false, (currentState) => {
         const newState = !currentState;
         
         setTabSetting('masterOn', newState);
         updateMasterButton(newState);
-        // contentScript에 상태 변경 메시지 전송
-        sendMessageToContentScript('TOGGLE_MASTER', { isOn: newState });
+        
+        // Content Script 준비 확인 후 메시지 전송
+        sendMessageToContentScript('TOGGLE_MASTER', { isOn: newState }, (response) => {
+          // 버튼 다시 활성화
+          masterBtn.disabled = false;
+          
+          if (response && response.status === 'warning') {
+            // Content Script가 준비되지 않았지만 설정은 저장됨
+            console.warn('Master toggle saved but content script not ready');
+          } else if (response && response.status === 'error') {
+            console.error('Error toggling master:', response.message);
+            // 오류 발생 시 상태 되돌리기
+            setTabSetting('masterOn', currentState);
+            updateMasterButton(currentState);
+          }
+        });
       });
     });
 
@@ -381,13 +450,14 @@ import './popup.css';
       
       // contentScript에서 현재 상태 가져오기
       sendMessageToContentScript('GET_STATUS', {}, (response) => {
-        if (response && response.status === 'success') {
+        loadingSpinner.style.display = 'none';
+        
+        if (response && (response.status === 'success' || response.status === 'partial_success')) {
           const data = response.data;
           let statusMessage = '';
           
           if (!data.isActive) {
             statusMessage = '비활성';
-            loadingSpinner.style.display = 'none';
           } else if (!data.isOnXSite) {
             statusMessage = 'X(트위터) 접속 대기 중';
           } else if (!data.isOnSpaceTweet) {
@@ -398,10 +468,18 @@ import './popup.css';
             statusMessage = `활성 중 (답글: ${data.replyCount}개)`;
           }
           
+          // 오류가 있었지만 부분적으로 성공한 경우 표시
+          if (response.status === 'partial_success' && data.error) {
+            statusMessage += ' (일부 오류)';
+            console.warn('Status check had errors:', data.error);
+          }
+          
           statusText.textContent = `상태: ${statusMessage}`;
+        } else if (response && response.status === 'error') {
+          console.error('Status check failed:', response.error);
+          statusText.textContent = '상태: 확인 실패';
         } else {
           statusText.textContent = '상태: 대기 중';
-          loadingSpinner.style.display = 'none';
         }
       });
     }
@@ -420,75 +498,387 @@ import './popup.css';
         console.info('Not on X domain, skipping message to content script:', type);
         
         // 설정 관련 메시지인 경우 스토리지에 직접 저장
-        if (type === 'SET_REFRESH_INTERVAL' && payload && payload.intervalSeconds) {
-          chrome.storage.sync.set({ refreshInterval: payload.intervalSeconds });
-        } else if (type === 'SET_CLICK_DELAY' && payload && payload.delayMs) {
-          chrome.storage.sync.set({ clickDelayMs: payload.delayMs });
+        if (type === 'SET_REFRESH_INTERVAL' && payload && payload.interval) {
+          chrome.storage.sync.set({ refreshInterval: payload.interval });
+        } else if (type === 'SET_CLICK_DELAY' && payload && payload.delay) {
+          chrome.storage.sync.set({ clickDelayMs: payload.delay });
         }
         
         if (callback) callback({ status: 'success', message: 'Settings saved (not on X domain)' });
         return;
       }
       
-      // X 도메인인 경우에만 메시지 전송
-      chrome.tabs.sendMessage(currentTabId, { type, payload }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('Error sending message to content script:', chrome.runtime.lastError.message);
-          if (callback) callback({ status: 'error', message: chrome.runtime.lastError.message });
+      // X 도메인인 경우 Content Script 준비 확인 (주입 포함)
+      checkContentScriptReadyWithInjection(currentTabId, (isReady, error) => {
+        if (isReady) {
+          // Content Script가 준비되었으면 메시지 전송
+          sendMessageWithRetry(currentTabId, { type, payload }, callback);
         } else {
-          if (callback) callback(response);
+          console.warn('Content script not ready after injection attempt:', error);
+          
+          // 설정 관련 메시지는 스토리지에 직접 저장
+          if (type === 'SET_REFRESH_INTERVAL' && payload && payload.interval) {
+            chrome.storage.sync.set({ refreshInterval: payload.interval });
+          } else if (type === 'SET_CLICK_DELAY' && payload && payload.delay) {
+            chrome.storage.sync.set({ clickDelayMs: payload.delay });
+          } else if (type === 'TOGGLE_MASTER' && payload) {
+            // 마스터 설정도 저장
+            setTabSetting('masterOn', payload.isOn);
+          }
+          
+          if (callback) {
+            callback({ 
+              status: 'warning', 
+              message: 'Settings saved, but content script not ready. Please refresh the page.' 
+            });
+          }
+          
+          // 사용자에게 알림 표시
+          if (error && (error.includes('injection failed') || error.includes('Injection error'))) {
+            showTemporaryMessage('설정이 저장되었습니다. 페이지를 새로고침하면 적용됩니다.', 4000);
+          } else {
+            showTemporaryMessage('확장 프로그램을 활성화하는 중...', 2000);
+          }
         }
       });
     });
   }
 
-  // 개발자 옵션 설정
-  function setupDeveloperOptions() {
-    const developerOptionsHeader = document.querySelector('.developer-options-header');
-    const developerOptionsContent = document.getElementById('developerOptionsContent');
-    const toggleIcon = document.getElementById('devOptionsToggleIcon');
-    const debugLogToggle = document.getElementById('debugLogToggle');
-
-    // 개발자 옵션 펼치기/접기
-    developerOptionsHeader.addEventListener('click', () => {
-      const isExpanded = developerOptionsContent.style.display !== 'none';
-      
-      if (isExpanded) {
-        developerOptionsContent.style.display = 'none';
-        toggleIcon.textContent = '▶';
-      } else {
-        developerOptionsContent.style.display = 'block';
-        toggleIcon.textContent = '▼';
+  // Content Script 준비 상태 확인 함수
+  function checkContentScriptReady(tabId, callback, timeout = 5000) {
+    const startTime = Date.now();
+    
+    function checkReady() {
+      if (Date.now() - startTime > timeout) {
+        callback(false, 'Timeout waiting for content script');
+        return;
       }
-    });
-
-    // 디버그 로그 토글 상태 불러오기
-    chrome.storage.sync.get(['debugLogEnabled'], result => {
-      const isEnabled = result.debugLogEnabled || false;
-      updateDebugLogButton(isEnabled);
-    });
-
-    // 디버그 로그 토글 이벤트
-    debugLogToggle.addEventListener('click', () => {
-      chrome.storage.sync.get(['debugLogEnabled'], result => {
-        const currentState = result.debugLogEnabled || false;
-        const newState = !currentState;
-        
-        chrome.storage.sync.set({ debugLogEnabled: newState }, () => {
-          updateDebugLogButton(newState);
-          
-          // Content Script에 디버그 로그 상태 변경 메시지 전송
-          sendMessageToContentScript('SET_DEBUG_LOG', { enabled: newState });
-        });
+      
+      chrome.tabs.sendMessage(tabId, { type: 'PING' }, (response) => {
+        if (chrome.runtime.lastError) {
+          // Content script가 아직 준비되지 않음, 재시도
+          setTimeout(checkReady, 300);
+        } else {
+          // Content script 준비됨
+          callback(true);
+        }
       });
-    });
+    }
+    
+    checkReady();
+  }
 
-    function updateDebugLogButton(isEnabled) {
-      debugLogToggle.textContent = isEnabled ? 'ON' : 'OFF';
-      debugLogToggle.className = isEnabled ? 'button' : 'button off';
+  // 재시도 로직이 포함된 메시지 전송 함수
+  function sendMessageWithRetry(tabId, message, callback, maxRetries = 3) {
+    let attempts = 0;
+    
+    function attemptSend() {
+      attempts++;
+      
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (chrome.runtime.lastError) {
+          const errorMessage = chrome.runtime.lastError.message;
+          console.warn(`Message send attempt ${attempts}/${maxRetries} failed:`, errorMessage);
+          
+          // Content Script가 로드되지 않은 경우 재시도
+          if (errorMessage.includes('Could not establish connection') && attempts < maxRetries) {
+            console.info(`Retrying in 800ms... (attempt ${attempts + 1}/${maxRetries})`);
+            setTimeout(attemptSend, 800);
+            return;
+          }
+          
+          // 최대 재시도 횟수 도달 또는 다른 오류
+          console.error('Final message send failure:', errorMessage);
+          if (callback) callback({ status: 'error', message: errorMessage });
+        } else {
+          // 성공
+          console.info(`Message sent successfully on attempt ${attempts}`);
+          if (callback) callback(response);
+        }
+      });
+    }
+    
+    attemptSend();
+  }
+
+  // 사용자에게 임시 메시지를 표시하는 함수
+  function showTemporaryMessage(message, duration = 3000) {
+    const statusText = document.getElementById('statusText');
+    if (statusText) {
+      const originalText = statusText.textContent;
+      const originalColor = statusText.style.color;
+      
+      statusText.textContent = message;
+      statusText.style.color = '#2196F3'; // 파란색으로 정보 메시지 표시
+      
+      setTimeout(() => {
+        statusText.textContent = originalText;
+        statusText.style.color = originalColor;
+      }, duration);
     }
   }
 
+  // 탭 상태 확인 함수
+  function checkTabStatus(tabId, callback) {
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) {
+        callback(false, 'Tab not found');
+        return;
+      }
+      
+      if (tab.status !== 'complete') {
+        callback(false, 'Tab still loading');
+        return;
+      }
+      
+      callback(true, tab);
+    });
+  }
+
+  // 사용자 피드백 표시 함수
+  function showStatusMessage(message, type = 'info', duration = 3000) {
+    const statusText = document.getElementById('statusText');
+    if (!statusText) return;
+    
+    const originalText = statusText.textContent;
+    const originalColor = statusText.style.color;
+    
+    // 색상 설정
+    const colors = {
+      'info': '#2196F3',
+      'success': '#4CAF50',
+      'warning': '#ff9800',
+      'error': '#F44336'
+    };
+    
+    statusText.textContent = message;
+    statusText.style.color = colors[type] || colors.info;
+    
+    // 일정 시간 후 원래 상태로 복원
+    if (duration > 0) {
+      setTimeout(() => {
+        if (statusText.textContent === message) {
+          statusText.textContent = originalText;
+          statusText.style.color = originalColor;
+        }
+      }, duration);
+    }
+  }
+
+  async function checkAndRequestPermissions() {
+    try {
+      // 필요한 권한들 확인
+      const hasPermissions = await chrome.permissions.contains({
+        permissions: ['scripting', 'tabs'],
+        origins: ['*://x.com/*', '*://twitter.com/*']
+      });
+
+      if (!hasPermissions) {
+        // 사용자에게 권한 요청 이유 설명
+        showStatusMessage('확장 프로그램 권한이 필요합니다', 'warning', 0);
+        
+        try {
+          const granted = await chrome.permissions.request({
+            permissions: ['scripting', 'tabs'],
+            origins: ['*://x.com/*', '*://twitter.com/*']
+          });
+          
+          if (!granted) {
+            console.warn('Required permissions denied by user');
+            showStatusMessage('권한이 거부되었습니다. 수동으로 페이지를 새로고침해주세요.', 'error', 5000);
+            return false;
+          }
+          
+          showStatusMessage('권한이 승인되었습니다', 'success');
+        } catch (permissionError) {
+          console.error('Permission request failed:', permissionError);
+          showStatusMessage('권한 요청 중 오류가 발생했습니다', 'error', 5000);
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+      showStatusMessage('권한 확인 중 오류가 발생했습니다', 'error', 5000);
+      return false;
+    }
+  }
+
+  // Content Script 동적 주입 함수 (강화된 에러 처리)
+  async function injectContentScriptIfNeeded(tabId) {
+    // 권한 확인
+    const hasPermissions = await checkAndRequestPermissions();
+    if (!hasPermissions) {
+      console.error('Insufficient permissions for content script injection');
+      showStatusMessage('권한이 부족합니다. 확장 프로그램을 다시 설치해주세요.', 'error', 5000);
+      return false;
+    }
+
+    // 이미 주입 중인 경우 대기
+    if (injectionInProgress) {
+      console.log('Injection already in progress, waiting...');
+      showStatusMessage('확장 프로그램을 활성화하는 중입니다...', 'info', 0);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // 주입 시도 횟수 제한
+    const attempts = injectionAttempts.get(tabId) || 0;
+    if (attempts >= 3) {
+      console.warn(`Maximum injection attempts (${attempts}) reached for tab ${tabId}`);
+      showStatusMessage('활성화 시도가 너무 많습니다. 페이지를 새로고침해주세요.', 'error', 5000);
+      return false;
+    }
+
+    injectionAttempts.set(tabId, attempts + 1);
+    injectionInProgress = true;
+
+    try {
+      // 먼저 Content Script가 이미 있는지 확인
+      const response = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { type: 'PING' }, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve(null); // Content Script 없음
+          } else {
+            resolve(response); // Content Script 있음
+          }
+        });
+      });
+
+      if (response) {
+        console.log('Content Script already loaded');
+        showStatusMessage('확장 프로그램이 이미 활성화되어 있습니다', 'success');
+        injectionAttempts.delete(tabId); // 성공 시 카운터 리셋
+        return true;
+      }
+
+      // 탭 상태 확인
+      const tab = await new Promise((resolve) => {
+        chrome.tabs.get(tabId, (tab) => {
+          if (chrome.runtime.lastError) {
+            resolve(null);
+          } else {
+            resolve(tab);
+          }
+        });
+      });
+
+      if (!tab) {
+        console.error('Tab not found:', tabId);
+        showStatusMessage('탭을 찾을 수 없습니다', 'error');
+        return false;
+      }
+
+      if (tab.status !== 'complete') {
+        console.warn('Tab not ready for injection:', tabId, 'status:', tab.status);
+        showStatusMessage('페이지 로딩이 완료될 때까지 기다려주세요', 'warning');
+        return false;
+      }
+
+      // Content Script가 없으면 동적으로 주입
+      console.log('Injecting Content Script dynamically...');
+      showStatusMessage('확장 프로그램을 활성화하는 중입니다...', 'info', 0);
+      
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['contentScript.js']
+        });
+      } catch (scriptError) {
+        console.error('Script injection failed:', scriptError);
+        showStatusMessage('스크립트 주입에 실패했습니다. 페이지를 새로고침해주세요.', 'error', 5000);
+        return false;
+      }
+
+      // 주입 후 잠시 대기
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // 주입 성공 확인
+      const injectionResponse = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { type: 'PING' }, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve(null);
+          } else {
+            resolve(response);
+          }
+        });
+      });
+
+      if (injectionResponse) {
+        console.log('Content Script injection successful');
+        showStatusMessage('확장 프로그램이 활성화되었습니다!', 'success');
+        injectionAttempts.delete(tabId); // 성공 시 카운터 리셋
+        return true;
+      } else {
+        console.error('Content Script injection verification failed');
+        showStatusMessage('활성화 확인에 실패했습니다. 다시 시도해주세요.', 'error');
+        return false;
+      }
+
+    } catch (error) {
+      console.error('Error injecting Content Script:', error);
+      return false;
+    } finally {
+      injectionInProgress = false;
+    }
+  }
+
+  // Content Script 준비 상태 확인 및 필요시 주입
+  // Content Script 상태 확인 및 주입 (강화된 에러 처리 및 사용자 피드백)
+  async function checkContentScriptReadyWithInjection(tabId, callback, timeout = 10000) {
+    const startTime = Date.now();
+    let injectionAttempted = false;
+    let isFirstCheck = true;
+    
+    async function checkReady() {
+      if (Date.now() - startTime > timeout) {
+        showStatusMessage('확장 프로그램 활성화 시간이 초과되었습니다', 'error', 5000);
+        callback(false, 'Timeout waiting for content script');
+        return;
+      }
+      
+      // 첫 번째 확인에서 로딩 표시
+      if (isFirstCheck) {
+        showStatusMessage('확장 프로그램 상태를 확인하는 중...', 'info', 0);
+        isFirstCheck = false;
+      }
+      
+      // PING 메시지로 Content Script 확인
+      chrome.tabs.sendMessage(tabId, { type: 'PING' }, async (response) => {
+        if (chrome.runtime.lastError) {
+          // Content Script가 없으면 주입 시도 (한 번만)
+          if (!injectionAttempted) {
+            injectionAttempted = true;
+            console.log('Content Script not found, attempting injection...');
+            
+            try {
+              const injectionSuccess = await injectContentScriptIfNeeded(tabId);
+              if (injectionSuccess) {
+                // 주입 성공 후 다시 확인
+                setTimeout(checkReady, 800);
+              } else {
+                showStatusMessage('확장 프로그램 활성화에 실패했습니다', 'error', 5000);
+                callback(false, 'Content Script injection failed');
+              }
+            } catch (error) {
+              console.error('Injection attempt failed:', error);
+              showStatusMessage('확장 프로그램 활성화 중 오류가 발생했습니다', 'error', 5000);
+              callback(false, `Injection error: ${error.message}`);
+            }
+          } else {
+            // 이미 주입을 시도했지만 여전히 응답이 없으면 재시도
+            setTimeout(checkReady, 500);
+          }
+        } else {
+          // Content Script 준비됨
+          showStatusMessage('확장 프로그램이 준비되었습니다', 'success');
+          callback(true);
+        }
+      });
+    }
+    
+    checkReady();
+  }
   // 현재 탭이 X(트위터) 도메인인지 확인
   function checkIsOnXDomain(callback) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -510,6 +900,7 @@ import './popup.css';
         <div style="text-align: center; width: 100%;">
           <h3 style="margin-bottom: 10px; color: #e74c3c; font-size: 14px;">지원되지 않는 사이트</h3>
           <p style="margin-bottom: 10px; font-size: 12px;">이 확장 프로그램은 X(트위터) 도메인에서만 작동합니다.</p>
+          <p style="margin-bottom: 10px; font-size: 11px; color: #666;">X 스페이스 페이지에서 사용해주세요.</p>
           <button id="openXButton" class="button" style="margin: 10px auto; padding: 5px 10px; font-size: 12px;">x.com 열기</button>
         </div>
       `;
@@ -552,6 +943,9 @@ import './popup.css';
     setupDarkModeToggle();
     setupDeveloperOptions();
     
+    // 탭 모니터링 및 상태 확인 기능 초기화
+    setupTabMonitoring();
+    
     // GitHub 링크 이벤트 처리
     const githubLink = document.getElementById('github-link');
     if (githubLink) {
@@ -570,6 +964,7 @@ import './popup.css';
             console.log('Popup initialized for X domain tab:', tabId);
             currentTabId = tabId; // 전역 변수에 탭 ID 설정
             setupMasterToggle();
+            setupPeriodicStatusCheck(); // 주기적 상태 확인 시작
           } else {
             console.error('Failed to get current tab ID');
           }
@@ -590,5 +985,78 @@ import './popup.css';
         });
       }
     });
+  });
+  
+  // 탭 상태 변경 모니터링 (향상된 사용자 경험)
+  function setupTabMonitoring() {
+    // 탭이 활성화되거나 URL이 변경될 때 상태 업데이트
+    if (chrome.tabs && chrome.tabs.onActivated) {
+      chrome.tabs.onActivated.addListener(() => {
+        // 새로운 탭으로 전환 시 상태 초기화
+        setTimeout(() => {
+          location.reload();
+        }, 100);
+      });
+    }
+    
+    // 탭 URL 변경 감지
+    if (chrome.tabs && chrome.tabs.onUpdated) {
+      chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+        if (changeInfo.url && tabId === currentTabId) {
+          // 현재 탭의 URL이 변경된 경우 상태 새로고침
+          setTimeout(() => {
+            location.reload();
+          }, 500);
+        }
+      });
+    }
+  }
+
+  // 확장 프로그램 활성화 상태 주기적 확인
+  function setupPeriodicStatusCheck() {
+    if (currentTabId && statusUpdateInterval === null) {
+      statusUpdateInterval = setInterval(() => {
+        checkIsOnXDomain((isOnXDomain) => {
+          if (isOnXDomain) {
+            // X 도메인에서만 상태 업데이트
+            sendMessageToContentScript('GET_STATUS', {}, (response) => {
+              if (response && response.status === 'success') {
+                updateStatusDisplay(response.data);
+              }
+            });
+          }
+        });
+      }, 5000); // 5초마다 확인
+    }
+  }
+
+  // 상태 표시 업데이트
+  function updateStatusDisplay(statusData) {
+    const statusText = document.getElementById('statusText');
+    if (!statusText) return;
+    
+    if (statusData.isActive) {
+      if (statusData.isOnSpaceTweet && statusData.isListeningToSpace) {
+        statusText.textContent = `활성: 스페이스 청취 중 (${statusData.replyCount}개 답글)`;
+        statusText.style.color = '#4CAF50';
+      } else if (statusData.isOnSpaceTweet) {
+        statusText.textContent = '활성: 스페이스 트윗 페이지';
+        statusText.style.color = '#2196F3';
+      } else {
+        statusText.textContent = '활성: X 사이트에서 대기 중';
+        statusText.style.color = '#ff9800';
+      }
+    } else {
+      statusText.textContent = '비활성';
+      statusText.style.color = '#888';
+    }
+  }
+
+  // Popup이 닫힐 때 정리 작업
+  window.addEventListener('beforeunload', () => {
+    if (statusUpdateInterval) {
+      clearInterval(statusUpdateInterval);
+      statusUpdateInterval = null;
+    }
   });
 })();
